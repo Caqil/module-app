@@ -27,11 +27,9 @@ interface SetupStepProps {
   isLoading: boolean;
 }
 
-interface SetupData {
-  database?: any;
-  admin?: any;
-  theme?: any;
-}
+type SetupData = {
+  [K in (typeof SETUP_STEPS)[number]["id"]]?: any;
+};
 
 const SETUP_STEPS: SetupStep[] = [
   {

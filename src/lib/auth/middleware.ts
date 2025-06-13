@@ -94,7 +94,7 @@ export class AuthMiddleware {
       }
 
       // Check email verification requirement
-      if (requireEmailVerification && !session.user.isEmailVerified) {
+      if (requireEmailVerification && !(session.user as any).isEmailVerified) {
         logMiddlewareAction('EMAIL_NOT_VERIFIED', pathname, { userId: session.user.id })
         return createRedirectResponse(request, '/verify-email', true)
       }
@@ -185,7 +185,7 @@ export class AuthMiddleware {
         return createUnauthorizedResponse('Account is disabled')
       }
 
-      if (requireEmailVerification && !session.user.isEmailVerified) {
+      if (requireEmailVerification && !(session.user as any).isEmailVerified) {
         logMiddlewareAction('API_EMAIL_NOT_VERIFIED', pathname, { userId: session.user.id })
         return createUnauthorizedResponse('Email verification required')
       }
