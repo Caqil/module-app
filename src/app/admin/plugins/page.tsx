@@ -85,8 +85,8 @@ interface Plugin {
 
 const uploadSchema = z.object({
   file: z.any().refine((file) => file?.length > 0, "Plugin file is required"),
-  overwrite: z.boolean().optional().default(false),
-  activate: z.boolean().optional().default(true),
+  overwrite: z.boolean(),
+  activate: z.boolean(),
 });
 
 type UploadFormData = z.infer<typeof uploadSchema>;

@@ -137,7 +137,7 @@ const securitySettingsSchema = z.object({
   lockoutDuration: z.number().min(1).max(1440), // Max 24 hours in minutes
   requireHttps: z.boolean(),
   enableCors: z.boolean(),
-  corsOrigins: z.array(z.string()).default([]),
+  corsOrigins: z.array(z.string()),
   rateLimitEnabled: z.boolean(),
   rateLimitRequests: z.number().min(1).max(10000),
   rateLimitWindow: z.number().min(1).max(3600), // Max 1 hour in seconds
