@@ -5,26 +5,40 @@ import { ApiResponse } from '@/types/global'
 import { connectToDatabase, isHealthy } from '@/lib/database/mongodb'
 import { SystemSettingsModel } from '@/lib/database/models/settings'
 import { UserModel } from '@/lib/database/models/user'
+import { InstalledThemeModel } from '@/lib/database/models/theme'
+import { clearSetupStatusCache } from '@/lib/middleware/setup'
+import { logMiddlewareAction, addSecurityHeaders } from '@/lib/middleware/utils'
 
 export async function GET() {
   try {
     await connectToDatabase()
     const settings = await SystemSettingsModel.getSettings()
 
-    return NextResponse.json<ApiResponse>({
+    const response = NextResponse.json<ApiResponse>({
       success: true,
       data: { 
         isSetupComplete: settings.isSetupComplete,
-        siteName: settings.siteName 
+        siteName: settings.siteName,
+        allowUserRegistration: settings.allowUserRegistration,
+        maintenanceMode: settings.maintenanceMode,
       }
     })
 
+    return addSecurityHeaders(response)
+
   } catch (error) {
     console.error('Get setup status error:', error)
-    return NextResponse.json<ApiResponse>({
+    
+    const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
+      error: 'Internal server error',
+      data: {
+        isSetupComplete: false,
+        siteName: 'Modular App',
+      }
     }, { status: 500 })
+
+    return addSecurityHeaders(response)
   }
 }
 
@@ -33,26 +47,33 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { step, data } = body
 
+    logMiddlewareAction('SETUP_STEP_REQUEST', step, { hasData: !!data })
+
     switch (step) {
       case 'database':
         return await handleDatabaseStep(data)
       case 'admin':
         return await handleAdminStep(data)
       case 'complete':
-        return await handleCompleteStep()
+        return await handleCompleteStep(data)
       default:
-        return NextResponse.json<ApiResponse>({
+        const response = NextResponse.json<ApiResponse>({
           success: false,
-          error: 'Invalid setup step'
+          error: 'Invalid setup step',
+          data: { availableSteps: ['database', 'admin', 'complete'] }
         }, { status: 400 })
+        return addSecurityHeaders(response)
     }
 
   } catch (error) {
     console.error('Setup error:', error)
-    return NextResponse.json<ApiResponse>({
+    
+    const response = NextResponse.json<ApiResponse>({
       success: false,
       error: 'Internal server error'
     }, { status: 500 })
+
+    return addSecurityHeaders(response)
   }
 }
 
@@ -60,27 +81,61 @@ async function handleDatabaseStep(data: any) {
   const validation = setupDatabaseSchema.safeParse(data)
   
   if (!validation.success) {
-    return NextResponse.json<ApiResponse>({
+    const response = NextResponse.json<ApiResponse>({
       success: false,
       errors: validation.error.flatten().fieldErrors,
-      message: 'Validation failed'
+      message: 'Database configuration validation failed'
     }, { status: 400 })
+    return addSecurityHeaders(response)
   }
 
   try {
+    // Test database connection
     await connectToDatabase()
     const healthy = await isHealthy()
 
-    return NextResponse.json<ApiResponse>({
-      success: healthy,
-      message: healthy ? 'Database connection successful' : 'Database connection failed'
+    if (!healthy) {
+      const response = NextResponse.json<ApiResponse>({
+        success: false,
+        error: 'Database connection test failed',
+        data: { 
+          connectionString: validation.data.mongodbUri ? 'Provided' : 'Missing',
+          healthCheck: false 
+        }
+      }, { status: 400 })
+      return addSecurityHeaders(response)
+    }
+
+    logMiddlewareAction('DATABASE_TEST_SUCCESS', 'setup', { 
+      hasUri: !!validation.data.mongodbUri 
     })
 
+    const response = NextResponse.json<ApiResponse>({
+      success: true,
+      message: 'Database connection successful',
+      data: { 
+        connectionString: 'Valid',
+        healthCheck: true,
+        testTimestamp: new Date().toISOString()
+      }
+    })
+
+    return addSecurityHeaders(response)
+
   } catch (error) {
-    return NextResponse.json<ApiResponse>({
+    console.error('Database connection test failed:', error)
+    
+    const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Database connection failed'
+      error: 'Database connection failed',
+      data: { 
+        connectionString: validation.data.mongodbUri ? 'Provided' : 'Missing',
+        healthCheck: false,
+        errorType: error instanceof Error ? error.name : 'Unknown'
+      }
     }, { status: 500 })
+
+    return addSecurityHeaders(response)
   }
 }
 
@@ -88,11 +143,12 @@ async function handleAdminStep(data: any) {
   const validation = setupAdminSchema.safeParse(data)
   
   if (!validation.success) {
-    return NextResponse.json<ApiResponse>({
+    const response = NextResponse.json<ApiResponse>({
       success: false,
       errors: validation.error.flatten().fieldErrors,
-      message: 'Validation failed'
+      message: 'Admin account validation failed'
     }, { status: 400 })
+    return addSecurityHeaders(response)
   }
 
   try {
@@ -101,10 +157,19 @@ async function handleAdminStep(data: any) {
     // Check if admin already exists
     const existingAdmin = await UserModel.findOne({ role: 'admin' })
     if (existingAdmin) {
-      return NextResponse.json<ApiResponse>({
+      logMiddlewareAction('ADMIN_EXISTS', 'setup', { 
+        existingAdminId: existingAdmin._id 
+      })
+      
+      const response = NextResponse.json<ApiResponse>({
         success: false,
-        error: 'Admin user already exists'
+        error: 'Admin user already exists',
+        data: { 
+          existingAdmin: true,
+          adminEmail: existingAdmin.email 
+        }
       }, { status: 400 })
+      return addSecurityHeaders(response)
     }
 
     // Create admin user
@@ -124,37 +189,218 @@ async function handleAdminStep(data: any) {
       adminEmail: validation.data.adminEmail,
     })
 
-    return NextResponse.json<ApiResponse>({
+    logMiddlewareAction('ADMIN_CREATED', 'setup', { 
+      adminId: adminUser._id,
+      siteName: validation.data.siteName 
+    })
+
+    const response = NextResponse.json<ApiResponse>({
       success: true,
-      data: { adminId: adminUser._id },
+      data: { 
+        adminId: adminUser._id,
+        adminEmail: adminUser.email,
+        siteName: validation.data.siteName,
+        createdAt: adminUser.createdAt
+      },
       message: 'Admin user created successfully'
     })
 
+    return addSecurityHeaders(response)
+
   } catch (error) {
-    return NextResponse.json<ApiResponse>({
+    console.error('Admin creation failed:', error)
+    
+    const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Failed to create admin user'
+      error: 'Failed to create admin user',
+      data: { 
+        step: 'admin_creation',
+        errorType: error instanceof Error ? error.name : 'Unknown'
+      }
     }, { status: 500 })
+
+    return addSecurityHeaders(response)
   }
 }
 
-async function handleCompleteStep() {
+async function handleCompleteStep(data: any) {
   try {
     await connectToDatabase()
 
-    await SystemSettingsModel.updateSettings({
+    // Check if setup is already complete
+    const currentSettings = await SystemSettingsModel.getSettings()
+    if (currentSettings.isSetupComplete) {
+      logMiddlewareAction('SETUP_ALREADY_COMPLETE', 'setup')
+      
+      const response = NextResponse.json<ApiResponse>({
+        success: true,
+        message: 'Setup was already completed',
+        data: { 
+          isSetupComplete: true,
+          siteName: currentSettings.siteName,
+          completedAt: currentSettings.updatedAt
+        }
+      })
+      return addSecurityHeaders(response)
+    }
+
+    // Verify admin user exists
+    const adminUser = await UserModel.findOne({ role: 'admin' })
+    if (!adminUser) {
+      const response = NextResponse.json<ApiResponse>({
+        success: false,
+        error: 'Admin user not found. Please complete the admin setup step first.',
+        data: { 
+          missingStep: 'admin',
+          currentStep: 'complete'
+        }
+      }, { status: 400 })
+      return addSecurityHeaders(response)
+    }
+
+    // Activate default theme if specified in data
+    if (data?.theme?.selectedTheme) {
+      try {
+        await activateDefaultTheme(data.theme.selectedTheme)
+        logMiddlewareAction('DEFAULT_THEME_ACTIVATED', 'setup', { 
+          themeId: data.theme.selectedTheme 
+        })
+      } catch (error) {
+        console.warn('Failed to activate default theme:', error)
+        // Don't fail setup for theme activation errors
+      }
+    }
+
+    // Mark setup as complete
+    const updatedSettings = await SystemSettingsModel.updateSettings({
       isSetupComplete: true,
     })
 
-    return NextResponse.json<ApiResponse>({
+    // Clear the setup status cache to reflect completion
+    clearSetupStatusCache()
+
+    logMiddlewareAction('SETUP_COMPLETED', 'setup', { 
+      siteName: updatedSettings.siteName,
+      adminEmail: updatedSettings.adminEmail
+    })
+
+    const response = NextResponse.json<ApiResponse>({
       success: true,
-      message: 'Setup completed successfully'
+      message: 'Setup completed successfully',
+      data: { 
+        isSetupComplete: true,
+        siteName: updatedSettings.siteName,
+        adminEmail: updatedSettings.adminEmail,
+        completedAt: new Date().toISOString(),
+        cacheCleared: true
+      }
+    })
+
+    return addSecurityHeaders(response)
+
+  } catch (error) {
+    console.error('Setup completion failed:', error)
+    
+    const response = NextResponse.json<ApiResponse>({
+      success: false,
+      error: 'Failed to complete setup',
+      data: { 
+        step: 'completion',
+        errorType: error instanceof Error ? error.name : 'Unknown'
+      }
+    }, { status: 500 })
+
+    return addSecurityHeaders(response)
+  }
+}
+
+async function activateDefaultTheme(themeId: string) {
+  try {
+    // Create default theme entry if it doesn't exist
+    const existingTheme = await InstalledThemeModel.findByThemeId(themeId)
+    
+    if (!existingTheme) {
+      // Create default theme record
+      await InstalledThemeModel.create({
+        themeId,
+        name: getThemeName(themeId),
+        version: '1.0.0',
+        status: 'installed',
+        customization: getDefaultThemeCustomization(themeId),
+        installPath: `/themes/${themeId}`,
+        isActive: true,
+        manifest: getDefaultThemeManifest(themeId),
+        installedBy: 'system',
+        activatedAt: new Date(),
+      })
+    } else {
+      // Activate existing theme
+      await InstalledThemeModel.activateTheme(themeId)
+    }
+
+    // Update system settings
+    await SystemSettingsModel.updateSettings({
+      activeTheme: themeId,
     })
 
   } catch (error) {
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: 'Failed to complete setup'
-    }, { status: 500 })
+    console.error('Theme activation failed:', error)
+    throw error
+  }
+}
+
+function getThemeName(themeId: string): string {
+  const themeNames: Record<string, string> = {
+    default: 'Default Theme',
+    minimal: 'Minimal Theme',
+    business: 'Business Theme',
+    dark: 'Dark Theme',
+  }
+  return themeNames[themeId] || 'Unknown Theme'
+}
+
+function getDefaultThemeCustomization(themeId: string) {
+  return {
+    colors: {
+      primary: '#0066cc',
+      secondary: '#6b7280',
+      accent: '#f59e0b',
+      background: '#ffffff',
+      foreground: '#111827',
+    },
+    typography: {
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        serif: ['Merriweather', 'serif'],
+        mono: ['Fira Code', 'monospace'],
+      },
+    },
+    borderRadius: '0.5rem',
+  }
+}
+
+function getDefaultThemeManifest(themeId: string) {
+  return {
+    id: themeId,
+    name: getThemeName(themeId),
+    version: '1.0.0',
+    description: `Default ${themeId} theme for Modular App`,
+    author: {
+      name: 'Modular App Team',
+      email: 'team@modularapp.com',
+    },
+    license: 'MIT',
+    category: 'minimal',
+    compatibility: {
+      nextjs: '^15.0.0',
+      app: '^1.0.0',
+    },
+    features: ['Responsive design', 'Dark mode support', 'Customizable'],
+    main: 'index.js',
+    layouts: {
+      default: 'layouts/default.tsx',
+      admin: 'layouts/admin.tsx',
+      auth: 'layouts/auth.tsx',
+    },
   }
 }

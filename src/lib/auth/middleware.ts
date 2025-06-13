@@ -1,7 +1,18 @@
-
+// src/lib/auth/middleware.ts - Enhanced version
 import { NextRequest, NextResponse } from 'next/server'
 import { UserRole } from '@/types/global'
 import { sessionManager } from './session'
+import { 
+  createRedirectResponse, 
+  createUnauthorizedResponse, 
+  createForbiddenResponse,
+  addSecurityHeaders,
+  hasRequiredRole,
+  logMiddlewareAction,
+  logMiddlewareError,
+  checkRateLimit,
+  getRateLimitIdentifier
+} from '@/lib/middleware/utils'
 
 export interface AuthMiddlewareOptions {
   requiredRole?: UserRole
@@ -9,6 +20,9 @@ export interface AuthMiddlewareOptions {
   redirectTo?: string
   allowedPaths?: string[]
   excludedPaths?: string[]
+  enableRateLimit?: boolean
+  maxRequests?: number
+  windowMs?: number
 }
 
 export class AuthMiddleware {
@@ -33,43 +47,66 @@ export class AuthMiddleware {
       requireEmailVerification = false,
       redirectTo = '/signin',
       allowedPaths = [],
-      excludedPaths = []
+      excludedPaths = [],
+      enableRateLimit = false,
+      maxRequests = 100,
+      windowMs = 60000
     } = options
 
     const { pathname } = request.nextUrl
 
-    // Skip excluded paths
-    if (this.isPathExcluded(pathname, excludedPaths)) {
-      return NextResponse.next()
-    }
-
-    // Allow specific paths without authentication
-    if (this.isPathAllowed(pathname, allowedPaths)) {
-      return NextResponse.next()
-    }
-
     try {
+      // Skip excluded paths
+      if (this.isPathExcluded(pathname, excludedPaths)) {
+        logMiddlewareAction('SKIP_EXCLUDED', pathname)
+        return this.addHeaders(NextResponse.next())
+      }
+
+      // Allow specific paths without authentication
+      if (this.isPathAllowed(pathname, allowedPaths)) {
+        logMiddlewareAction('ALLOW_PATH', pathname)
+        return this.addHeaders(NextResponse.next())
+      }
+
+      // Rate limiting check
+      if (enableRateLimit) {
+        const identifier = getRateLimitIdentifier(request)
+        const rateLimitResult = checkRateLimit(identifier, maxRequests, windowMs)
+        
+        if (!rateLimitResult.allowed) {
+          logMiddlewareAction('RATE_LIMIT_EXCEEDED', pathname, { identifier })
+          return this.createRateLimitResponse(rateLimitResult.resetTime)
+        }
+      }
+
       // Get session from request
       const session = await sessionManager.getSession(request)
       
       if (!session) {
-        return this.redirectToAuth(request, redirectTo)
+        logMiddlewareAction('NO_SESSION', pathname)
+        return createRedirectResponse(request, redirectTo, true)
       }
 
       // Check if user is active
       if (!session.user.isActive) {
-        return this.createUnauthorizedResponse('Account is disabled')
+        logMiddlewareAction('INACTIVE_USER', pathname, { userId: session.user.id })
+        return this.createAccountDisabledResponse()
       }
 
       // Check email verification requirement
-      if (requireEmailVerification && !session.user) {
-        // Would need to check isEmailVerified from database
-        // For now, assume verified if session exists
+      if (requireEmailVerification && !session.user.isEmailVerified) {
+        logMiddlewareAction('EMAIL_NOT_VERIFIED', pathname, { userId: session.user.id })
+        return createRedirectResponse(request, '/verify-email', true)
       }
 
       // Check role requirement
-      if (requiredRole && !this.hasRequiredRole(session.user.role, requiredRole)) {
-        return this.createForbiddenResponse('Insufficient permissions')
+      if (requiredRole && !hasRequiredRole(session.user.role, requiredRole)) {
+        logMiddlewareAction('INSUFFICIENT_ROLE', pathname, { 
+          userRole: session.user.role, 
+          requiredRole,
+          userId: session.user.id 
+        })
+        return createRedirectResponse(request, '/access-denied', true)
       }
 
       // Add user info to request headers for use in API routes
@@ -77,11 +114,18 @@ export class AuthMiddleware {
       response.headers.set('x-user-id', session.user.id)
       response.headers.set('x-user-email', session.user.email)
       response.headers.set('x-user-role', session.user.role)
+      response.headers.set('x-user-active', session.user.isActive.toString())
 
-      return response
+      logMiddlewareAction('AUTH_SUCCESS', pathname, { 
+        userId: session.user.id,
+        userRole: session.user.role 
+      })
+
+      return this.addHeaders(response)
+
     } catch (error) {
-      console.error('Auth middleware error:', error)
-      return this.redirectToAuth(request, redirectTo)
+      logMiddlewareError(error, pathname, 'AUTH_PROTECT')
+      return createRedirectResponse(request, redirectTo)
     }
   }
 
@@ -91,6 +135,9 @@ export class AuthMiddleware {
       requiredRole: 'admin',
       redirectTo: '/signin',
       excludedPaths: ['/api/auth/*'],
+      enableRateLimit: true,
+      maxRequests: 200,
+      windowMs: 60000,
     })
   }
 
@@ -99,21 +146,57 @@ export class AuthMiddleware {
     request: NextRequest,
     options: AuthMiddlewareOptions = {}
   ): Promise<NextResponse> {
-    const { requiredRole, requireEmailVerification = false } = options
+    const { 
+      requiredRole, 
+      requireEmailVerification = false,
+      enableRateLimit = true,
+      maxRequests = 300,
+      windowMs = 60000
+    } = options
+
+    const { pathname } = request.nextUrl
 
     try {
+      // Rate limiting for API routes
+      if (enableRateLimit) {
+        const identifier = getRateLimitIdentifier(request)
+        const rateLimitResult = checkRateLimit(identifier, maxRequests, windowMs)
+        
+        if (!rateLimitResult.allowed) {
+          logMiddlewareAction('API_RATE_LIMIT_EXCEEDED', pathname, { identifier })
+          return this.createRateLimitResponse(rateLimitResult.resetTime)
+        }
+      }
+
+      // Handle OPTIONS requests for CORS
+      if (request.method === 'OPTIONS') {
+        return this.handleCORSPreflight(request)
+      }
+
       const session = await sessionManager.getSession(request)
       
       if (!session) {
-        return this.createUnauthorizedResponse('Authentication required')
+        logMiddlewareAction('API_NO_SESSION', pathname)
+        return createUnauthorizedResponse('Authentication required')
       }
 
       if (!session.user.isActive) {
-        return this.createUnauthorizedResponse('Account is disabled')
+        logMiddlewareAction('API_INACTIVE_USER', pathname, { userId: session.user.id })
+        return createUnauthorizedResponse('Account is disabled')
       }
 
-      if (requiredRole && !this.hasRequiredRole(session.user.role, requiredRole)) {
-        return this.createForbiddenResponse('Insufficient permissions')
+      if (requireEmailVerification && !session.user.isEmailVerified) {
+        logMiddlewareAction('API_EMAIL_NOT_VERIFIED', pathname, { userId: session.user.id })
+        return createUnauthorizedResponse('Email verification required')
+      }
+
+      if (requiredRole && !hasRequiredRole(session.user.role, requiredRole)) {
+        logMiddlewareAction('API_INSUFFICIENT_ROLE', pathname, { 
+          userRole: session.user.role, 
+          requiredRole,
+          userId: session.user.id 
+        })
+        return createForbiddenResponse('Insufficient permissions')
       }
 
       // Add user context to headers
@@ -121,23 +204,24 @@ export class AuthMiddleware {
       response.headers.set('x-user-id', session.user.id)
       response.headers.set('x-user-email', session.user.email)
       response.headers.set('x-user-role', session.user.role)
+      response.headers.set('x-user-active', session.user.isActive.toString())
 
-      return response
+      logMiddlewareAction('API_AUTH_SUCCESS', pathname, { 
+        userId: session.user.id,
+        userRole: session.user.role 
+      })
+
+      return this.addHeaders(response)
+
     } catch (error) {
-      console.error('API auth middleware error:', error)
-      return this.createUnauthorizedResponse('Authentication failed')
+      logMiddlewareError(error, pathname, 'API_AUTH_PROTECT')
+      return createUnauthorizedResponse('Authentication failed')
     }
   }
 
   // Check if user has required role
   private hasRequiredRole(userRole: UserRole, requiredRole: UserRole): boolean {
-    const roleHierarchy: Record<UserRole, number> = {
-      user: 1,
-      moderator: 2,
-      admin: 3,
-    }
-
-    return roleHierarchy[userRole] >= roleHierarchy[requiredRole]
+    return hasRequiredRole(userRole, requiredRole)
   }
 
   // Check if path is allowed without authentication
@@ -158,28 +242,51 @@ export class AuthMiddleware {
     return pathname === pattern
   }
 
-  // Redirect to authentication page
-  private redirectToAuth(request: NextRequest, redirectTo: string): NextResponse {
-    const url = request.nextUrl.clone()
-    url.pathname = redirectTo
-    url.searchParams.set('from', request.nextUrl.pathname)
-    return NextResponse.redirect(url)
-  }
-
-  // Create unauthorized response for API routes
-  private createUnauthorizedResponse(message: string): NextResponse {
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 401 }
+  // Create rate limit response
+  private createRateLimitResponse(resetTime: number): NextResponse {
+    const response = NextResponse.json(
+      { 
+        success: false, 
+        error: 'Rate limit exceeded',
+        retryAfter: Math.ceil((resetTime - Date.now()) / 1000)
+      },
+      { status: 429 }
     )
+    
+    response.headers.set('Retry-After', Math.ceil((resetTime - Date.now()) / 1000).toString())
+    response.headers.set('X-RateLimit-Reset', resetTime.toString())
+    
+    return this.addHeaders(response)
   }
 
-  // Create forbidden response for API routes
-  private createForbiddenResponse(message: string): NextResponse {
+  // Create account disabled response
+  private createAccountDisabledResponse(): NextResponse {
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: 'Account is disabled' },
       { status: 403 }
     )
+  }
+
+  // Handle CORS preflight requests
+  private handleCORSPreflight(request: NextRequest): NextResponse {
+    const response = new NextResponse(null, { status: 200 })
+    
+    const origin = request.headers.get('origin')
+    if (origin) {
+      response.headers.set('Access-Control-Allow-Origin', origin)
+    }
+    
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+    response.headers.set('Access-Control-Allow-Credentials', 'true')
+    response.headers.set('Access-Control-Max-Age', '86400')
+    
+    return response
+  }
+
+  // Add security headers to response
+  private addHeaders(response: NextResponse): NextResponse {
+    return addSecurityHeaders(response)
   }
 }
 
@@ -195,3 +302,36 @@ export const protectAdminRoute = (request: NextRequest) =>
 
 export const protectAPIRoute = (options?: AuthMiddlewareOptions) => 
   (request: NextRequest) => authMiddleware.protectAPI(request, options)
+
+// Middleware configuration presets
+export const middlewarePresets = {
+  public: {
+    excludedPaths: ['*'],
+  },
+  user: {
+    requiredRole: 'user' as UserRole,
+    enableRateLimit: true,
+  },
+  moderator: {
+    requiredRole: 'moderator' as UserRole,
+    enableRateLimit: true,
+    maxRequests: 500,
+  },
+  admin: {
+    requiredRole: 'admin' as UserRole,
+    enableRateLimit: true,
+    maxRequests: 1000,
+    requireEmailVerification: true,
+  },
+  api: {
+    enableRateLimit: true,
+    maxRequests: 100,
+    windowMs: 60000,
+  },
+  apiAdmin: {
+    requiredRole: 'admin' as UserRole,
+    enableRateLimit: true,
+    maxRequests: 500,
+    requireEmailVerification: true,
+  },
+} as const

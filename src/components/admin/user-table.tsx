@@ -29,18 +29,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ApiResponse, User, PaginatedResponse, UserRole } from "@/types/global";
+import { ApiResponse, PaginatedResponse, UserRole } from "@/types/global";
 import { formatDate } from "@/lib/utils";
+import { User } from "@/types/auth";
 
 export function UserTable() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  // Fix: Initialize pagination with complete structure matching PaginatedResponse
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
     pages: 0,
     limit: 10,
+    hasNext: false,
+    hasPrev: false,
   });
   const router = useRouter();
 
@@ -164,7 +168,7 @@ export function UserTable() {
               ))
             ) : users.length > 0 ? (
               users.map((user) => (
-                <TableRow key={user._id}>
+                <TableRow>
                   <TableCell>
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-8 w-8">
