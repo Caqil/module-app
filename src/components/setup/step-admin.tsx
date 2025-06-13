@@ -1,0 +1,1 @@
+// Admin setup step component

@@ -1,0 +1,1 @@
+// Theme setup step component
