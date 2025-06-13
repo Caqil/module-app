@@ -1,239 +1,377 @@
 "use client";
-
-import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import * as React from "react";
 import {
-  LayoutDashboard,
-  Users,
-  Palette,
-  Puzzle,
-  Settings,
-  ChevronDown,
-  ChevronRight,
-  Menu,
-  X,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  IconDashboard,
+  IconUsers,
+  IconPuzzle,
+  IconPalette,
+  IconSettings,
+  IconHelp,
+  IconSearch,
+  IconDatabase,
+  IconReport,
+  IconFileWord,
+  IconInnerShadowTop,
+  IconCirclePlusFilled,
+  IconMail,
+  IconDots,
+  IconFolder,
+  IconShare3,
+  IconTrash,
+  IconCreditCard,
+  IconDotsVertical,
+  IconLogout,
+  IconUserCircle,
+  IconNotification,
+  type Icon,
+} from "@tabler/icons-react";
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
-interface SidebarItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  children?: SidebarItem[];
-}
-
-const sidebarItems: SidebarItem[] = [
-  {
-    title: "Dashboard",
-    href: "/admin/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Users",
-    href: "/admin/users",
-    icon: Users,
-  },
-  {
-    title: "Themes",
-    href: "/admin/themes",
-    icon: Palette,
-  },
-  {
-    title: "Plugins",
-    href: "/admin/plugins",
-    icon: Puzzle,
-  },
-  {
-    title: "Settings",
-    href: "/admin/settings",
-    icon: Settings,
-  },
-];
-
-export function AdminSidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const pathname = usePathname();
-
-  const SidebarContent = () => (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex h-16 items-center border-b px-4">
-        <Link href="/admin/dashboard" className="flex items-center space-x-2">
-          <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">A</span>
-          </div>
-          {!isCollapsed && (
-            <span className="font-semibold text-lg">Admin Panel</span>
-          )}
-        </Link>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 space-y-2 py-4">
-        {sidebarItems.map((item) => (
-          <SidebarItem
-            key={item.href}
-            item={item}
-            isCollapsed={isCollapsed}
-            pathname={pathname}
-          />
-        ))}
-      </nav>
-
-      {/* Collapse Toggle */}
-      <div className="border-t p-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="w-full justify-start"
-        >
-          <Menu className="h-4 w-4" />
-          {!isCollapsed && <span className="ml-2">Collapse</span>}
-        </Button>
-      </div>
-    </div>
-  );
-
+// Navigation components
+function NavMain({
+  items,
+}: {
+  items: {
+    title: string;
+    url: string;
+    icon: Icon;
+  }[];
+}) {
+  const { isMobile } = useSidebar();
   return (
-    <>
-      {/* Desktop Sidebar */}
-      <div
-        className={cn(
-          "hidden md:flex md:flex-col md:fixed md:inset-y-0 md:z-50 md:border-r md:bg-background",
-          isCollapsed ? "md:w-16" : "md:w-64"
-        )}
-      >
-        <SidebarContent />
-      </div>
-
-      {/* Mobile Sidebar */}
-      <div className="md:hidden">
-        {/* Mobile Toggle */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsMobileOpen(true)}
-          className="fixed top-4 left-4 z-50"
-        >
-          <Menu className="h-4 w-4" />
-        </Button>
-
-        {/* Mobile Overlay */}
-        {isMobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden">
-            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" />
-            <div className="fixed left-0 top-0 h-full w-64 border-r bg-background">
-              <div className="flex items-center justify-between p-4 border-b">
-                <span className="font-semibold text-lg">Admin Panel</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsMobileOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <nav className="space-y-2 py-4">
-                {sidebarItems.map((item) => (
-                  <SidebarItem
-                    key={item.href}
-                    item={item}
-                    isCollapsed={false}
-                    pathname={pathname}
-                    onClick={() => setIsMobileOpen(false)}
-                  />
-                ))}
-              </nav>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-interface SidebarItemProps {
-  item: SidebarItem;
-  isCollapsed: boolean;
-  pathname: string;
-  onClick?: () => void;
-}
-
-function SidebarItem({
-  item,
-  isCollapsed,
-  pathname,
-  onClick,
-}: SidebarItemProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const isActive = pathname === item.href;
-  const hasChildren = item.children && item.children.length > 0;
-
-  const handleClick = () => {
-    if (hasChildren) {
-      setIsExpanded(!isExpanded);
-    }
-    onClick?.();
-  };
-
-  return (
-    <div className="px-3">
-      {hasChildren ? (
-        <button
-          onClick={handleClick}
-          className={cn(
-            "flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
-            isActive && "bg-accent text-accent-foreground"
-          )}
-        >
-          <item.icon className="h-4 w-4" />
-          {!isCollapsed && (
-            <>
-              <span className="ml-3 flex-1 text-left">{item.title}</span>
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </>
-          )}
-        </button>
-      ) : (
-        <Link
-          href={item.href}
-          onClick={onClick}
-          className={cn(
-            "flex items-center rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
-            isActive && "bg-accent text-accent-foreground"
-          )}
-        >
-          <item.icon className="h-4 w-4" />
-          {!isCollapsed && <span className="ml-3">{item.title}</span>}
-        </Link>
-      )}
-
-      {hasChildren && isExpanded && !isCollapsed && (
-        <div className="ml-6 mt-2 space-y-1">
-          {item.children!.map((child) => (
-            <Link
-              key={child.href}
-              href={child.href}
-              onClick={onClick}
-              className={cn(
-                "flex items-center rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                pathname === child.href && "bg-accent text-accent-foreground"
-              )}
+    <SidebarGroup>
+      <SidebarGroupContent className="flex flex-col gap-2">
+        <SidebarMenu>
+          <SidebarMenuItem className="flex items-center gap-2">
+            <SidebarMenuButton
+              tooltip="Quick Actions"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 duration-200 ease-linear"
             >
-              <child.icon className="h-4 w-4" />
-              <span className="ml-3">{child.title}</span>
-            </Link>
+              <IconCirclePlusFilled />
+              <span>Quick Actions</span>
+            </SidebarMenuButton>
+            <Button
+              size="icon"
+              className="size-8 group-data-[collapsible=icon]:opacity-0"
+              variant="outline"
+            >
+              <IconMail />
+              <span className="sr-only">Notifications</span>
+            </Button>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton asChild>
+                <a href={item.url}>
+                  <item.icon />
+                  <span>{item.title}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           ))}
-        </div>
-      )}
-    </div>
+          <SidebarMenuItem>
+            <SidebarMenuButton className="text-sidebar-foreground/70">
+              <IconDots className="text-sidebar-foreground/70" />
+              <span>More</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+function NavDocuments({
+  items,
+}: {
+  items: {
+    name: string;
+    url: string;
+    icon: Icon;
+  }[];
+}) {
+  const { isMobile } = useSidebar();
+  return (
+    <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+      <SidebarGroupLabel>System Tools</SidebarGroupLabel>
+      <SidebarMenu>
+        {items.map((item) => (
+          <SidebarMenuItem key={item.name}>
+            <SidebarMenuButton asChild>
+              <a href={item.url}>
+                <item.icon />
+                <span>{item.name}</span>
+              </a>
+            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuAction
+                  showOnHover
+                  className="data-[state=open]:bg-accent rounded-sm"
+                >
+                  <IconDots />
+                  <span className="sr-only">More</span>
+                </SidebarMenuAction>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-24 rounded-lg"
+                side={isMobile ? "bottom" : "right"}
+                align={isMobile ? "end" : "start"}
+              >
+                <DropdownMenuItem>
+                  <IconFolder />
+                  <span>Open</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <IconShare3 />
+                  <span>Share</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive">
+                  <IconTrash />
+                  <span>Delete</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        ))}
+        <SidebarMenuItem>
+          <SidebarMenuButton className="text-sidebar-foreground/70">
+            <IconDots className="text-sidebar-foreground/70" />
+            <span>More</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
+  );
+}
+
+function NavSecondary({
+  items,
+  ...props
+}: {
+  items: {
+    title: string;
+    url: string;
+    icon: Icon;
+  }[];
+} & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  return (
+    <SidebarGroup {...props}>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton asChild>
+                <a href={item.url}>
+                  <item.icon />
+                  <span>{item.title}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+function NavUser({
+  user,
+}: {
+  user: {
+    name: string;
+    email: string;
+    avatar: string;
+  };
+}) {
+  const { isMobile } = useSidebar();
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <Avatar className="h-8 w-8 rounded-lg grayscale">
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="rounded-lg">MA</AvatarFallback>
+              </Avatar>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{user.name}</span>
+                <span className="text-muted-foreground truncate text-xs">
+                  {user.email}
+                </span>
+              </div>
+              <IconDotsVertical className="ml-auto size-4" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            side={isMobile ? "bottom" : "right"}
+            align="end"
+            sideOffset={4}
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <Avatar className="h-8 w-8 rounded-lg">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback className="rounded-lg">MA</AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">{user.name}</span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {user.email}
+                  </span>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem>
+                <IconUserCircle />
+                Account
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <IconCreditCard />
+                Billing
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <IconNotification />
+                Notifications
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <IconLogout />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+const data = {
+  user: {
+    name: "System Admin",
+    email: "admin@modularapp.com",
+    avatar: "/avatars/admin.jpg",
+  },
+  navMain: [
+    {
+      title: "Dashboard",
+      url: "/admin/dashboard",
+      icon: IconDashboard,
+    },
+    {
+      title: "Users",
+      url: "/admin/users",
+      icon: IconUsers,
+    },
+    {
+      title: "Plugins",
+      url: "/admin/plugins",
+      icon: IconPuzzle,
+    },
+    {
+      title: "Themes",
+      url: "/admin/themes",
+      icon: IconPalette,
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Settings",
+      url: "/admin/settings",
+      icon: IconSettings,
+    },
+    {
+      title: "Get Help",
+      url: "/help",
+      icon: IconHelp,
+    },
+    {
+      title: "Search",
+      url: "/search",
+      icon: IconSearch,
+    },
+  ],
+  systemTools: [
+    {
+      name: "Database",
+      url: "/admin/database",
+      icon: IconDatabase,
+    },
+    {
+      name: "Reports",
+      url: "/admin/reports",
+      icon: IconReport,
+    },
+    {
+      name: "API Docs",
+      url: "/admin/api-docs",
+      icon: IconFileWord,
+    },
+  ],
+};
+
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  return (
+    <Sidebar collapsible="offcanvas" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              className="data-[slot=sidebar-menu-button]:!p-1.5"
+            >
+              <a href="/admin/dashboard">
+                <IconInnerShadowTop className="!size-5" />
+                <span className="text-base font-semibold">Modular App</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <NavMain items={data.navMain} />
+        <NavDocuments items={data.systemTools} />
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
+      </SidebarContent>
+      <SidebarFooter>
+        <NavUser user={data.user} />
+      </SidebarFooter>
+    </Sidebar>
   );
 }

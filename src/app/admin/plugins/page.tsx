@@ -1,18 +1,41 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
+  IconPuzzle,
+  IconPlus,
+  IconSearch,
+  IconSettings,
+  IconPower,
+  IconTrash,
+  IconUpload,
+  IconCircleCheckFilled,
+  IconLoader,
+  IconShield,
+  IconDatabase,
+  IconApi,
+  IconUsers,
+  IconFile,
+  IconAlertTriangle,
+  IconFilter,
+  IconGrid3x3,
+  IconList,
+} from "@tabler/icons-react";
+
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +46,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Form,
   FormControl,
   FormField,
@@ -31,56 +61,54 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
 import {
-  Puzzle,
-  Play,
-  Square,
-  Settings,
-  Trash2,
-  Shield,
-  Loader2,
-  Plus,
-  Search,
-  AlertTriangle,
-  Info,
-  CheckCircle,
-} from "lucide-react";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ApiResponse } from "@/types/global";
+import { AppSidebar } from "@/components/admin/admin-sidebar";
+import { AdminHeader } from "@/components/admin/admin-header";
 
 interface Plugin {
-  id: string;
+  _id: string;
   pluginId: string;
   name: string;
   version: string;
-  description: string;
-  author: {
-    name: string;
-    email?: string;
-    url?: string;
-  };
-  category: string;
+  status: "installed" | "installing" | "failed" | "disabled";
   isActive: boolean;
-  status: "installed" | "installing" | "error";
-  permissions: string[];
-  routes?: Array<{
-    path: string;
-    method: string;
-  }>;
-  adminPages?: Array<{
-    path: string;
-    title: string;
-  }>;
-  dashboardWidgets?: Array<{
+  manifest: {
     id: string;
-    title: string;
-    size: string;
-  }>;
-  configuration?: Record<string, any>;
-  installedAt: string;
-  activatedAt?: string;
+    name: string;
+    version: string;
+    description: string;
+    category: string;
+    permissions: string[];
+    author: {
+      name: string;
+      email: string;
+    };
+    adminPages?: Array<{
+      path: string;
+      title: string;
+    }>;
+    dashboardWidgets?: Array<{
+      id: string;
+      title: string;
+      size: string;
+    }>;
+  };
+  config?: Record<string, any>;
+  lastActivated?: Date;
+  installedBy: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const uploadSchema = z.object({
@@ -91,31 +119,62 @@ const uploadSchema = z.object({
 
 type UploadFormData = z.infer<typeof uploadSchema>;
 
-const PERMISSION_RISK_LEVELS = {
-  "database:read": "medium",
-  "database:write": "high",
-  "api:create": "high",
-  "admin:access": "high",
-  "users:read": "medium",
-  "users:write": "high",
-  "files:read": "low",
-  "files:write": "medium",
-  "settings:read": "low",
-  "settings:write": "high",
-  "plugins:manage": "high",
-  "themes:manage": "medium",
-} as const;
+const getPermissionIcon = (permission: string) => {
+  if (permission.includes("database")) return IconDatabase;
+  if (permission.includes("api")) return IconApi;
+  if (permission.includes("users")) return IconUsers;
+  if (permission.includes("admin")) return IconShield;
+  if (permission.includes("files")) return IconFile;
+  return IconShield;
+};
+
+const getPermissionVariant = (permission: string) => {
+  if (
+    permission.includes("write") ||
+    permission.includes("manage") ||
+    permission.includes("admin")
+  ) {
+    return "destructive";
+  }
+  if (permission.includes("create") || permission.includes("modify")) {
+    return "default";
+  }
+  return "secondary";
+};
+
+const getCategoryIcon = (category: string) => {
+  switch (category) {
+    case "analytics":
+      return "📊";
+    case "utility":
+      return "🔧";
+    case "marketing":
+      return "📈";
+    case "security":
+      return "🔒";
+    case "content":
+      return "📝";
+    case "commerce":
+      return "🛒";
+    default:
+      return "🧩";
+  }
+};
 
 export default function PluginsPage() {
-  const [plugins, setPlugins] = useState<Plugin[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
-  const [selectedPlugin, setSelectedPlugin] = useState<Plugin | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [plugins, setPlugins] = React.useState<Plugin[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [uploadOpen, setUploadOpen] = React.useState(false);
+  const [configOpen, setConfigOpen] = React.useState(false);
+  const [selectedPlugin, setSelectedPlugin] = React.useState<Plugin | null>(
+    null
+  );
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [categoryFilter, setCategoryFilter] = React.useState("all");
+  const [statusFilter, setStatusFilter] = React.useState("all");
+  const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
+  const [actionLoading, setActionLoading] = React.useState<string | null>(null);
 
   const uploadForm = useForm<UploadFormData>({
     resolver: zodResolver(uploadSchema),
@@ -125,7 +184,7 @@ export default function PluginsPage() {
     },
   });
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetchPlugins();
   }, []);
 
@@ -140,6 +199,9 @@ export default function PluginsPage() {
         const data: ApiResponse = await response.json();
         if (data.success && data.data?.plugins) {
           setPlugins(data.data.plugins);
+          setError(null);
+        } else {
+          setError(data.error || "Failed to load plugins");
         }
       } else {
         setError("Failed to fetch plugins");
@@ -183,14 +245,19 @@ export default function PluginsPage() {
     }
   };
 
-  const handleActivate = async (pluginId: string) => {
+  const handleTogglePlugin = async (
+    pluginId: string,
+    currentlyActive: boolean
+  ) => {
     try {
       setActionLoading(pluginId);
+      const action = currentlyActive ? "deactivate" : "activate";
+
       const response = await fetch(`/api/admin/plugins/${pluginId}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "activate" }),
+        body: JSON.stringify({ action }),
       });
 
       const result: ApiResponse = await response.json();
@@ -198,36 +265,11 @@ export default function PluginsPage() {
       if (result.success) {
         fetchPlugins();
       } else {
-        setError(result.error || "Activation failed");
+        setError(result.error || `${action} failed`);
       }
     } catch (err) {
-      setError("Activation failed");
-      console.error("Plugin activation error:", err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDeactivate = async (pluginId: string) => {
-    try {
-      setActionLoading(pluginId);
-      const response = await fetch(`/api/admin/plugins/${pluginId}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "deactivate" }),
-      });
-
-      const result: ApiResponse = await response.json();
-
-      if (result.success) {
-        fetchPlugins();
-      } else {
-        setError(result.error || "Deactivation failed");
-      }
-    } catch (err) {
-      setError("Deactivation failed");
-      console.error("Plugin deactivation error:", err);
+      setError("Action failed");
+      console.error("Plugin action error:", err);
     } finally {
       setActionLoading(null);
     }
@@ -258,456 +300,483 @@ export default function PluginsPage() {
     }
   };
 
-  const openConfiguration = (plugin: Plugin) => {
-    setSelectedPlugin(plugin);
-    setConfigOpen(true);
-  };
-
-  const getPermissionRiskColor = (permission: string) => {
-    const risk =
-      PERMISSION_RISK_LEVELS[permission as keyof typeof PERMISSION_RISK_LEVELS];
-    switch (risk) {
-      case "high":
-        return "destructive";
-      case "medium":
-        return "secondary";
-      case "low":
-        return "outline";
-      default:
-        return "outline";
-    }
-  };
-
   const filteredPlugins = plugins.filter((plugin) => {
     const matchesSearch =
       plugin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plugin.description.toLowerCase().includes(searchTerm.toLowerCase());
+      plugin.manifest.description
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
     const matchesCategory =
-      filterCategory === "all" || plugin.category === filterCategory;
-    return matchesSearch && matchesCategory;
+      categoryFilter === "all" || plugin.manifest.category === categoryFilter;
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && plugin.isActive) ||
+      (statusFilter === "inactive" && !plugin.isActive) ||
+      (statusFilter === "failed" && plugin.status === "failed");
+
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const categories = Array.from(
-    new Set(plugins.map((plugin) => plugin.category))
+    new Set(plugins.map((p) => p.manifest.category))
   );
+  const activePlugins = plugins.filter((p) => p.isActive).length;
+  const totalPlugins = plugins.length;
 
-  if (isLoading) {
+  const PluginCard = ({ plugin }: { plugin: Plugin }) => {
+    const Icon = getPermissionIcon(plugin.manifest.permissions[0] || "");
+
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Plugins</h1>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-4 w-3/4 bg-muted rounded"></div>
-                <div className="h-3 w-1/2 bg-muted rounded"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-20 bg-muted rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Plugins</h1>
-        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Install Plugin
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Install New Plugin</DialogTitle>
-              <DialogDescription>
-                Upload a plugin ZIP file to install it on your site.
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...uploadForm}>
-              <form
-                onSubmit={uploadForm.handleSubmit(handleUpload)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={uploadForm.control}
-                  name="file"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Plugin File</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept=".zip"
-                          onChange={(e) => field.onChange(e.target.files)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={uploadForm.control}
-                  name="overwrite"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center space-x-2">
-                      <FormControl>
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormLabel>Overwrite if exists</FormLabel>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={uploadForm.control}
-                  name="activate"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center space-x-2">
-                      <FormControl>
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormLabel>Activate after installation</FormLabel>
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                  <Button type="submit" disabled={actionLoading === "upload"}>
-                    {actionLoading === "upload" && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Install Plugin
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center space-x-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search plugins..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 border border-input rounded-md bg-background"
-        >
-          <option value="all">All Categories</option>
-          {categories.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Plugins Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredPlugins.map((plugin) => (
-          <Card key={plugin.id} className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Puzzle className="h-5 w-5" />
-                  <span>{plugin.name}</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {plugin.isActive && <Badge>Active</Badge>}
-                  <Badge
-                    variant={
-                      plugin.status === "installed" ? "default" : "secondary"
-                    }
-                  >
-                    {plugin.status}
-                  </Badge>
-                </div>
-              </CardTitle>
-              <CardDescription>{plugin.description}</CardDescription>
-              <div className="text-sm text-muted-foreground">
-                v{plugin.version} by {plugin.author.name}
+      <Card className="group hover:shadow-md transition-shadow">
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="text-2xl">
+                {getCategoryIcon(plugin.manifest.category)}
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Permissions */}
               <div>
-                <div className="text-sm font-medium mb-2 flex items-center">
-                  <Shield className="h-4 w-4 mr-1" />
-                  Permissions
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {plugin.permissions.slice(0, 3).map((permission, idx) => (
+                <CardTitle className="text-lg">{plugin.name}</CardTitle>
+                <CardDescription className="text-sm">
+                  v{plugin.version} • {plugin.manifest.category}
+                </CardDescription>
+              </div>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <IconSettings className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setSelectedPlugin(plugin)}>
+                  <IconSettings className="w-4 h-4 mr-2" />
+                  Configure
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() =>
+                    handleTogglePlugin(plugin.pluginId, plugin.isActive)
+                  }
+                  disabled={actionLoading === plugin.pluginId}
+                >
+                  {plugin.isActive ? (
+                    <>
+                      <IconPower className="w-4 h-4 mr-2" />
+                      Deactivate
+                    </>
+                  ) : (
+                    <>
+                      <IconCircleCheckFilled className="w-4 h-4 mr-2" />
+                      Activate
+                    </>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleUninstall(plugin.pluginId)}
+                  disabled={actionLoading === plugin.pluginId}
+                  className="text-destructive"
+                >
+                  <IconTrash className="w-4 h-4 mr-2" />
+                  Uninstall
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            {plugin.manifest.description}
+          </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Status</span>
+              {plugin.status === "installed" && plugin.isActive ? (
+                <Badge variant="default" className="text-xs">
+                  <IconCircleCheckFilled className="w-3 h-3 mr-1" />
+                  Active
+                </Badge>
+              ) : plugin.status === "installed" && !plugin.isActive ? (
+                <Badge variant="secondary" className="text-xs">
+                  <IconPower className="w-3 h-3 mr-1" />
+                  Inactive
+                </Badge>
+              ) : plugin.status === "installing" ? (
+                <Badge variant="outline" className="text-xs">
+                  <IconLoader className="w-3 h-3 mr-1 animate-spin" />
+                  Installing
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="text-xs">
+                  <IconAlertTriangle className="w-3 h-3 mr-1" />
+                  Failed
+                </Badge>
+              )}
+            </div>
+            {plugin.manifest.permissions.length > 0 && (
+              <div>
+                <span className="text-sm font-medium">Permissions</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {plugin.manifest.permissions.slice(0, 3).map((permission) => (
                     <Badge
-                      key={idx}
-                      variant={getPermissionRiskColor(permission) as any}
+                      key={permission}
+                      variant={getPermissionVariant(permission)}
                       className="text-xs"
                     >
-                      {permission.split(":")[1]}
+                      {permission.split(":")[0]}
                     </Badge>
                   ))}
-                  {plugin.permissions.length > 3 && (
+                  {plugin.manifest.permissions.length > 3 && (
                     <Badge variant="outline" className="text-xs">
-                      +{plugin.permissions.length - 3} more
+                      +{plugin.manifest.permissions.length - 3}
                     </Badge>
                   )}
                 </div>
               </div>
+            )}
+          </div>
+        </CardContent>
+        <CardFooter className="pt-0">
+          <div className="text-xs text-muted-foreground">
+            By {plugin.manifest.author.name} • Installed{" "}
+            {new Date(plugin.createdAt).toLocaleDateString()}
+          </div>
+        </CardFooter>
+      </Card>
+    );
+  };
 
-              {/* Features */}
+  return (
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
+      <AppSidebar variant="inset" />
+      <SidebarInset>
+        <AdminHeader />
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
+            {/* Header Stats */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    Total Plugins
+                  </CardTitle>
+                  <IconPuzzle className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalPlugins}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    Active Plugins
+                  </CardTitle>
+                  <IconCircleCheckFilled className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{activePlugins}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {totalPlugins > 0
+                      ? Math.round((activePlugins / totalPlugins) * 100)
+                      : 0}
+                    % activation rate
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    Categories
+                  </CardTitle>
+                  <IconFilter className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{categories.length}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Plugin categories
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    System Health
+                  </CardTitle>
+                  <IconShield className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">Healthy</div>
+                  <p className="text-xs text-muted-foreground">
+                    All plugins stable
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Page Header */}
+            <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-medium mb-2">Features</div>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  {plugin.routes && plugin.routes.length > 0 && (
-                    <div>• {plugin.routes.length} API route(s)</div>
-                  )}
-                  {plugin.adminPages && plugin.adminPages.length > 0 && (
-                    <div>• {plugin.adminPages.length} admin page(s)</div>
-                  )}
-                  {plugin.dashboardWidgets &&
-                    plugin.dashboardWidgets.length > 0 && (
-                      <div>
-                        • {plugin.dashboardWidgets.length} dashboard widget(s)
-                      </div>
-                    )}
-                </div>
+                <h1 className="text-3xl font-bold tracking-tight">Plugins</h1>
+                <p className="text-muted-foreground">
+                  Manage and configure system plugins
+                </p>
               </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-2">
-                <div className="flex space-x-2">
-                  {plugin.isActive ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeactivate(plugin.id)}
-                      disabled={actionLoading === plugin.id}
-                    >
-                      {actionLoading === plugin.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Square className="h-4 w-4" />
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => handleActivate(plugin.id)}
-                      disabled={actionLoading === plugin.id}
-                    >
-                      {actionLoading === plugin.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openConfiguration(plugin)}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleUninstall(plugin.id)}
-                  disabled={actionLoading === plugin.id}
+              <div className="flex items-center gap-2">
+                <ToggleGroup
+                  type="single"
+                  value={viewMode}
+                  onValueChange={(value: "grid" | "list") =>
+                    value && setViewMode(value)
+                  }
                 >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Configuration Dialog */}
-      <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Configure {selectedPlugin?.name}</DialogTitle>
-            <DialogDescription>
-              Manage plugin settings and permissions
-            </DialogDescription>
-          </DialogHeader>
-          {selectedPlugin && (
-            <Tabs defaultValue="general" className="w-full">
-              <TabsList>
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="permissions">Permissions</TabsTrigger>
-                <TabsTrigger value="features">Features</TabsTrigger>
-                <TabsTrigger value="settings">Settings</TabsTrigger>
-              </TabsList>
-              <TabsContent value="general" className="space-y-4">
-                <div className="grid gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Plugin Name</label>
-                    <Input value={selectedPlugin.name} disabled />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Description</label>
-                    <Textarea value={selectedPlugin.description} disabled />
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="text-sm font-medium">Version</label>
-                      <Input value={selectedPlugin.version} disabled />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Category</label>
-                      <Input value={selectedPlugin.category} disabled />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Author</label>
-                    <Input value={selectedPlugin.author.name} disabled />
-                  </div>
-                </div>
-              </TabsContent>
-              <TabsContent value="permissions" className="space-y-4">
-                <div className="space-y-3">
-                  {selectedPlugin.permissions.map((permission, idx) => {
-                    const risk =
-                      PERMISSION_RISK_LEVELS[
-                        permission as keyof typeof PERMISSION_RISK_LEVELS
-                      ];
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-3 border rounded-lg"
+                  <ToggleGroupItem value="grid" aria-label="Grid view">
+                    <IconGrid3x3 className="h-4 w-4" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="list" aria-label="List view">
+                    <IconList className="h-4 w-4" />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <IconPlus className="w-4 h-4 mr-2" />
+                      Install Plugin
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Install New Plugin</DialogTitle>
+                      <DialogDescription>
+                        Upload a plugin ZIP file to install it on your system.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Form {...uploadForm}>
+                      <form
+                        onSubmit={uploadForm.handleSubmit(handleUpload)}
+                        className="space-y-4"
                       >
-                        <div className="flex items-center space-x-3">
-                          {risk === "high" ? (
-                            <AlertTriangle className="h-4 w-4 text-red-500" />
-                          ) : risk === "medium" ? (
-                            <Info className="h-4 w-4 text-yellow-500" />
-                          ) : (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
+                        <FormField
+                          control={uploadForm.control}
+                          name="file"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Plugin File</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="file"
+                                  accept=".zip"
+                                  onChange={(e) =>
+                                    field.onChange(e.target.files)
+                                  }
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
                           )}
-                          <div>
-                            <div className="font-medium">{permission}</div>
-                            <div className="text-sm text-muted-foreground">
-                              Risk level: {risk}
-                            </div>
-                          </div>
+                        />
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={uploadForm.control}
+                            name="overwrite"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                  <FormLabel className="text-base">
+                                    Overwrite
+                                  </FormLabel>
+                                  <div className="text-sm text-muted-foreground">
+                                    Replace existing plugin
+                                  </div>
+                                </div>
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={uploadForm.control}
+                            name="activate"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                  <FormLabel className="text-base">
+                                    Activate
+                                  </FormLabel>
+                                  <div className="text-sm text-muted-foreground">
+                                    Activate after install
+                                  </div>
+                                </div>
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
                         </div>
-                        <Badge
-                          variant={getPermissionRiskColor(permission) as any}
-                        >
-                          {risk}
-                        </Badge>
-                      </div>
-                    );
-                  })}
-                </div>
-              </TabsContent>
-              <TabsContent value="features" className="space-y-4">
-                <div className="grid gap-6">
-                  {selectedPlugin.routes &&
-                    selectedPlugin.routes.length > 0 && (
-                      <div>
-                        <h4 className="font-medium mb-3">API Routes</h4>
-                        <div className="space-y-2">
-                          {selectedPlugin.routes.map((route, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center space-x-3 p-2 border rounded"
-                            >
-                              <Badge variant="outline">{route.method}</Badge>
-                              <code className="text-sm">{route.path}</code>
-                            </div>
-                          ))}
+                        <DialogFooter>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setUploadOpen(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            disabled={actionLoading === "upload"}
+                          >
+                            {actionLoading === "upload" ? (
+                              <>
+                                <IconLoader className="w-4 h-4 mr-2 animate-spin" />
+                                Installing...
+                              </>
+                            ) : (
+                              <>
+                                <IconUpload className="w-4 h-4 mr-2" />
+                                Install Plugin
+                              </>
+                            )}
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <IconSearch className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search plugins..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Select
+                  value={categoryFilter}
+                  onValueChange={setCategoryFilter}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Error Display */}
+            {error && (
+              <Card className="border-destructive">
+                <CardHeader>
+                  <CardTitle className="text-destructive">Error</CardTitle>
+                  <CardDescription>{error}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={fetchPlugins} variant="outline">
+                    Try Again
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Plugins Grid/List */}
+            {isLoading ? (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Card key={i} className="animate-pulse">
+                    <CardHeader>
+                      <div className="flex items-center space-x-3">
+                        <div className="h-8 w-8 bg-muted rounded"></div>
+                        <div className="space-y-2 flex-1">
+                          <div className="h-4 bg-muted rounded w-3/4"></div>
+                          <div className="h-3 bg-muted rounded w-1/2"></div>
                         </div>
                       </div>
-                    )}
-                  {selectedPlugin.adminPages &&
-                    selectedPlugin.adminPages.length > 0 && (
-                      <div>
-                        <h4 className="font-medium mb-3">Admin Pages</h4>
-                        <div className="space-y-2">
-                          {selectedPlugin.adminPages.map((page, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between p-2 border rounded"
-                            >
-                              <span>{page.title}</span>
-                              <code className="text-sm">{page.path}</code>
-                            </div>
-                          ))}
-                        </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="h-3 bg-muted rounded"></div>
+                        <div className="h-3 bg-muted rounded w-5/6"></div>
                       </div>
-                    )}
-                  {selectedPlugin.dashboardWidgets &&
-                    selectedPlugin.dashboardWidgets.length > 0 && (
-                      <div>
-                        <h4 className="font-medium mb-3">Dashboard Widgets</h4>
-                        <div className="space-y-2">
-                          {selectedPlugin.dashboardWidgets.map(
-                            (widget, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center justify-between p-2 border rounded"
-                              >
-                                <span>{widget.title}</span>
-                                <Badge variant="outline">{widget.size}</Badge>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    )}
-                </div>
-              </TabsContent>
-              <TabsContent value="settings" className="space-y-4">
-                <div className="text-sm text-muted-foreground">
-                  Plugin-specific configuration settings would be displayed
-                  here.
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfigOpen(false)}>
-              Cancel
-            </Button>
-            <Button>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : filteredPlugins.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center p-8">
+                  <IconPuzzle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No plugins found</h3>
+                  <p className="text-muted-foreground text-center mb-4">
+                    {searchTerm ||
+                    categoryFilter !== "all" ||
+                    statusFilter !== "all"
+                      ? "No plugins match your current filters."
+                      : "You haven't installed any plugins yet."}
+                  </p>
+                  <Button onClick={() => setUploadOpen(true)}>
+                    <IconPlus className="w-4 h-4 mr-2" />
+                    Install Your First Plugin
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div
+                className={
+                  viewMode === "grid"
+                    ? "grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+                    : "space-y-4"
+                }
+              >
+                {filteredPlugins.map((plugin) => (
+                  <PluginCard key={plugin._id} plugin={plugin} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
