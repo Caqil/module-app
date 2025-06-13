@@ -1,3 +1,5 @@
+// Plugin model - Fixed duplicate index issue
+// src/lib/database/models/plugin.ts
 
 import { InstallationStatus } from '@/types/global'
 import { InstalledPlugin, PluginBackup, PluginPermission } from '@/types/plugin'
@@ -24,7 +26,7 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   pluginId: {
     type: String,
     required: [true, 'Plugin ID is required'],
-    unique: true,
+    unique: true, // This already creates an index
     trim: true,
   },
   name: {
@@ -81,8 +83,8 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes
-installedPluginSchema.index({ pluginId: 1 })
+// Indexes - Remove the duplicate pluginId index since unique: true already creates one
+// installedPluginSchema.index({ pluginId: 1 }) // ← REMOVED - This was causing the duplicate index warning
 installedPluginSchema.index({ status: 1 })
 installedPluginSchema.index({ isActive: 1 })
 installedPluginSchema.index({ createdAt: -1 })
@@ -172,7 +174,7 @@ const pluginBackupSchema = new Schema<IPluginBackupDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes
+// Indexes for PluginBackup
 pluginBackupSchema.index({ pluginId: 1 })
 pluginBackupSchema.index({ createdAt: -1 })
 

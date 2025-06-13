@@ -1,3 +1,5 @@
+// Theme model - Fixed duplicate index issue
+// src/lib/database/models/theme.ts
 
 import { InstallationStatus } from '@/types/global'
 import { InstalledTheme, ThemeBackup } from '@/types/theme'
@@ -23,7 +25,7 @@ const installedThemeSchema = new Schema<IInstalledThemeDocument>({
   themeId: {
     type: String,
     required: [true, 'Theme ID is required'],
-    unique: true,
+    unique: true, // This already creates an index
     trim: true,
   },
   name: {
@@ -76,8 +78,8 @@ const installedThemeSchema = new Schema<IInstalledThemeDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes
-installedThemeSchema.index({ themeId: 1 })
+// Indexes - Remove the duplicate themeId index since unique: true already creates one
+// installedThemeSchema.index({ themeId: 1 }) // ← REMOVED - This was causing the duplicate index warning
 installedThemeSchema.index({ status: 1 })
 installedThemeSchema.index({ isActive: 1 })
 installedThemeSchema.index({ createdAt: -1 })
@@ -168,7 +170,7 @@ const themeBackupSchema = new Schema<IThemeBackupDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes
+// Indexes for ThemeBackup
 themeBackupSchema.index({ themeId: 1 })
 themeBackupSchema.index({ createdAt: -1 })
 

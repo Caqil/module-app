@@ -10,6 +10,8 @@ export interface ISystemSettingsDocument extends Omit<SystemSettings, '_id'>, Do
 export interface ISystemSettingsModel extends Model<ISystemSettingsDocument> {
   getSettings(): Promise<ISystemSettingsDocument>
   updateSettings(updates: Partial<SystemSettings>): Promise<ISystemSettingsDocument>
+  getSettingsOrDefault(): Promise<{ settings: ISystemSettingsDocument | null; isDefault: boolean }>
+  initializeSettings(setupData: any): Promise<ISystemSettingsDocument>
   getSetting(key: keyof SystemSettings): Promise<any>
   setSetting(key: keyof SystemSettings, value: any): Promise<ISystemSettingsDocument>
 }
@@ -117,18 +119,37 @@ const systemSettingsSchema = new Schema<ISystemSettingsDocument>({
 
 // Ensure only one settings document exists
 systemSettingsSchema.index({}, { unique: true })
-
-// Static methods
 systemSettingsSchema.statics.getSettings = async function() {
-  let settings = await this.findOne()
+  // Simply find and return, don't auto-create
+  return await this.findOne()
+}
+
+systemSettingsSchema.statics.getSettingsOrDefault = async function() {
+  const settings = await this.findOne()
   if (!settings) {
-    // Create default settings if none exist
-    settings = await this.create({
-      siteName: 'Modular App',
-      adminEmail: 'admin@example.com',
-      isSetupComplete: false,
-    })
+    // Return default data without creating database record
+    return {
+      settings: null,
+      isDefault: true
+    }
   }
+  return {
+    settings,
+    isDefault: false
+  }
+}
+
+// Add a new method for creating settings after setup
+systemSettingsSchema.statics.initializeSettings = async function(setupData: any) {
+  // Only create database record when setup is actually completed
+  const settings = await this.create({
+    siteName: setupData.siteName || 'Modular App',
+    adminEmail: setupData.adminEmail,
+    isSetupComplete: true,
+    allowUserRegistration: setupData.allowUserRegistration ?? true,
+    maintenanceMode: false,
+    ...setupData
+  })
   return settings
 }
 

@@ -1,4 +1,5 @@
-// User model
+// User model - Fixed duplicate index issue
+// src/lib/database/models/user.ts
 
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import bcrypt from 'bcryptjs'
@@ -28,7 +29,7 @@ const userSchema = new Schema<IUserDocument>({
   email: {
     type: String,
     required: [true, 'Email is required'],
-    unique: true,
+    unique: true, // This already creates an index
     lowercase: true,
     trim: true,
     match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email'],
@@ -37,7 +38,7 @@ const userSchema = new Schema<IUserDocument>({
     type: String,
     required: [true, 'Password is required'],
     minlength: [8, 'Password must be at least 8 characters'],
-    select: false, // Don't include password in queries by default
+    select: false,
   },
   firstName: {
     type: String,
@@ -57,7 +58,7 @@ const userSchema = new Schema<IUserDocument>({
   },
   role: {
     type: String,
-     enum: Object.keys(USER_ROLES) as UserRole[],
+    enum: Object.keys(USER_ROLES) as UserRole[],
     default: 'user',
   },
   isActive: {
@@ -150,8 +151,8 @@ const userSchema = new Schema<IUserDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes
-userSchema.index({ email: 1 })
+// Indexes - Remove the duplicate email index since unique: true already creates one
+// userSchema.index({ email: 1 }) // ← REMOVED - This was causing the duplicate index warning
 userSchema.index({ role: 1 })
 userSchema.index({ isActive: 1 })
 userSchema.index({ createdAt: -1 })
@@ -209,7 +210,6 @@ userSchema.methods.isAccountLocked = function(): boolean {
 }
 
 userSchema.methods.incrementLoginAttempts = async function(): Promise<void> {
-  // If we have a previous lock that has expired, restart at 1
   if (this.lockUntil && this.lockUntil < new Date()) {
     return this.updateOne({
       $unset: { lockUntil: 1 },
@@ -219,7 +219,6 @@ userSchema.methods.incrementLoginAttempts = async function(): Promise<void> {
   
   const updates: any = { $inc: { loginAttempts: 1 } }
   
-  // If we've reached max attempts and it's not locked already, lock the account
   if (this.loginAttempts + 1 >= AUTH_CONFIG.MAX_LOGIN_ATTEMPTS && !this.isAccountLocked()) {
     updates.$set = { lockUntil: new Date(Date.now() + AUTH_CONFIG.LOCK_TIME) }
   }

@@ -9,18 +9,58 @@ import { InstalledThemeModel } from '@/lib/database/models/theme'
 import { clearSetupStatusCache } from '@/lib/middleware/setup'
 import { logMiddlewareAction, addSecurityHeaders } from '@/lib/middleware/utils'
 
+async function checkDatabaseConnection(): Promise<boolean> {
+  try {
+    const mongoUri = process.env.MONGODB_URI
+    if (!mongoUri) {
+      return false
+    }
+    
+    // Just test the connection, don't create any data
+    const mongoose = require('mongoose')
+    const testConnection = await mongoose.createConnection(mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    })
+    
+    await testConnection.close()
+    return true
+  } catch (error) {
+    return false
+  }
+}
 export async function GET() {
   try {
+    // First check if database is even accessible
+    const canConnect = await checkDatabaseConnection()
+    if (!canConnect) {
+      return NextResponse.json<ApiResponse>({
+        success: true,
+        data: { 
+          isSetupComplete: false,
+          siteName: 'Modular App',
+          needsSetup: true,
+          dbConnection: false
+        }
+      })
+    }
+
     await connectToDatabase()
-    const settings = await SystemSettingsModel.getSettings()
+    const { settings, isDefault } = await SystemSettingsModel.getSettingsOrDefault()
+
+    // If settings is null (no database record), setup is not complete
+    const isSetupComplete = settings ? settings.isSetupComplete : false
 
     const response = NextResponse.json<ApiResponse>({
       success: true,
       data: { 
-        isSetupComplete: settings.isSetupComplete,
-        siteName: settings.siteName,
-        allowUserRegistration: settings.allowUserRegistration,
-        maintenanceMode: settings.maintenanceMode,
+        isSetupComplete,
+        siteName: settings?.siteName || 'Modular App',
+        allowUserRegistration: settings?.allowUserRegistration ?? true,
+        maintenanceMode: settings?.maintenanceMode ?? false,
+        needsSetup: !isSetupComplete,
+        dbConnection: true,
+        hasSettings: !isDefault
       }
     })
 
@@ -35,6 +75,8 @@ export async function GET() {
       data: {
         isSetupComplete: false,
         siteName: 'Modular App',
+        needsSetup: true,
+        dbConnection: false
       }
     }, { status: 500 })
 
@@ -227,9 +269,9 @@ async function handleCompleteStep(data: any) {
   try {
     await connectToDatabase()
 
-    // Check if setup is already complete
-    const currentSettings = await SystemSettingsModel.getSettings()
-    if (currentSettings.isSetupComplete) {
+    // Check if setup is already complete by looking for actual database record
+    const existingSettings = await SystemSettingsModel.findOne()
+    if (existingSettings && existingSettings.isSetupComplete) {
       logMiddlewareAction('SETUP_ALREADY_COMPLETE', 'setup')
       
       const response = NextResponse.json<ApiResponse>({
@@ -237,8 +279,8 @@ async function handleCompleteStep(data: any) {
         message: 'Setup was already completed',
         data: { 
           isSetupComplete: true,
-          siteName: currentSettings.siteName,
-          completedAt: currentSettings.updatedAt
+          siteName: existingSettings.siteName,
+          completedAt: existingSettings.updatedAt
         }
       })
       return addSecurityHeaders(response)
@@ -258,7 +300,20 @@ async function handleCompleteStep(data: any) {
       return addSecurityHeaders(response)
     }
 
-    // Activate default theme if specified in data
+    // NOW create the actual settings record in database
+    const settingsData = {
+      siteName: data.siteName || 'Modular App',
+      adminEmail: adminUser.email,
+      isSetupComplete: true,
+      allowUserRegistration: data.allowUserRegistration ?? true,
+      maintenanceMode: false,
+      activeTheme: data.theme?.selectedTheme || null
+    }
+
+    // Initialize settings in database for the first time
+    const settings = await SystemSettingsModel.initializeSettings(settingsData)
+
+    // Activate default theme if specified
     if (data?.theme?.selectedTheme) {
       try {
         await activateDefaultTheme(data.theme.selectedTheme)
@@ -267,21 +322,15 @@ async function handleCompleteStep(data: any) {
         })
       } catch (error) {
         console.warn('Failed to activate default theme:', error)
-        // Don't fail setup for theme activation errors
       }
     }
 
-    // Mark setup as complete
-    const updatedSettings = await SystemSettingsModel.updateSettings({
-      isSetupComplete: true,
-    })
-
-    // Clear the setup status cache to reflect completion
+    // Clear the setup status cache
     clearSetupStatusCache()
 
     logMiddlewareAction('SETUP_COMPLETED', 'setup', { 
-      siteName: updatedSettings.siteName,
-      adminEmail: updatedSettings.adminEmail
+      siteName: settings.siteName,
+      adminEmail: settings.adminEmail
     })
 
     const response = NextResponse.json<ApiResponse>({
@@ -289,8 +338,8 @@ async function handleCompleteStep(data: any) {
       message: 'Setup completed successfully',
       data: { 
         isSetupComplete: true,
-        siteName: updatedSettings.siteName,
-        adminEmail: updatedSettings.adminEmail,
+        siteName: settings.siteName,
+        adminEmail: settings.adminEmail,
         completedAt: new Date().toISOString(),
         cacheCleared: true
       }

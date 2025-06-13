@@ -187,44 +187,104 @@ export class SessionManager {
   }
 
   // Authenticate user login
-  async authenticateUser(credentials: LoginCredentials): Promise<{ user: User; session: AuthSession } | { error: string }> {
+  // Temporary Debug Patch for src/lib/auth/session.ts
+// Replace the authenticateUser function with this version to get detailed debug info
+
+async authenticateUser(credentials: LoginCredentials): Promise<{ user: User; session: AuthSession } | { error: string }> {
   try {
+    console.log('🔍 [AUTH DEBUG] Login attempt started:', {
+      email: credentials.email,
+      passwordLength: credentials.password.length,
+      timestamp: new Date().toISOString()
+    })
+
     await connectToDatabase()
+    console.log('✅ [AUTH DEBUG] Database connected')
     
-    // Fix: Chain select() on the query, not the promise
-    const userDoc = await UserModel.findOne({ email: credentials.email.toLowerCase() }).select('+password')
+    // Find user with detailed logging
+    const userDoc = await UserModel.findOne({ 
+      email: credentials.email.toLowerCase() 
+    }).select('+password')
+    
+    console.log('👤 [AUTH DEBUG] User lookup result:', {
+      userFound: !!userDoc,
+      searchEmail: credentials.email.toLowerCase(),
+      userExists: userDoc ? 'YES' : 'NO'
+    })
+
     if (!userDoc) {
+      console.log('❌ [AUTH DEBUG] User not found for email:', credentials.email)
       return { error: ERROR_MESSAGES.INVALID_CREDENTIALS }
     }
 
-    if (userDoc.isAccountLocked()) {
+    console.log('👤 [AUTH DEBUG] User details:', {
+      email: userDoc.email,
+      role: userDoc.role,
+      isActive: userDoc.isActive,
+      isEmailVerified: userDoc.isEmailVerified,
+      loginAttempts: userDoc.loginAttempts || 0,
+      hasPassword: !!userDoc.password,
+      passwordHashStart: userDoc.password ? userDoc.password.substring(0, 10) + '...' : 'NO PASSWORD'
+    })
+
+    // Check if account is locked
+    const isLocked = userDoc.isAccountLocked()
+    console.log('🔒 [AUTH DEBUG] Account lock status:', {
+      isLocked,
+      lockUntil: userDoc.lockUntil,
+      currentTime: new Date(),
+      loginAttempts: userDoc.loginAttempts
+    })
+
+    if (isLocked) {
+      console.log('❌ [AUTH DEBUG] Account is locked')
       return { error: ERROR_MESSAGES.ACCOUNT_LOCKED }
     }
 
+    // Check if user is active
+    if (!userDoc.isActive) {
+      console.log('❌ [AUTH DEBUG] Account is inactive')
+      return { error: 'Account is disabled' }
+    }
+
+    // Password comparison with detailed logging
+    console.log('🔐 [AUTH DEBUG] Starting password comparison...')
     const isPasswordValid = await userDoc.comparePassword(credentials.password)
+    
+    console.log('🔐 [AUTH DEBUG] Password comparison result:', {
+      isValid: isPasswordValid,
+      providedPasswordLength: credentials.password.length,
+      storedPasswordHash: userDoc.password ? 'EXISTS' : 'MISSING'
+    })
+
     if (!isPasswordValid) {
+      console.log('❌ [AUTH DEBUG] Password invalid, incrementing login attempts')
       await userDoc.incrementLoginAttempts()
       return { error: ERROR_MESSAGES.INVALID_CREDENTIALS }
     }
 
-    if (!userDoc.isActive) {
-      return { error: 'Account is disabled' }
-    }
+    console.log('✅ [AUTH DEBUG] Password valid, proceeding with login')
 
+    // Reset login attempts and update last login
     await userDoc.resetLoginAttempts()
     userDoc.lastLogin = new Date()
     await userDoc.save()
 
+    console.log('✅ [AUTH DEBUG] User updated, creating session')
+
     // Convert to User type
     const user = userDoc.toJSON() as unknown as User
-
     const { session } = await this.createSession(user)
+
+    console.log('✅ [AUTH DEBUG] Login successful for:', user.email)
 
     return { user, session }
   } catch (error) {
-    console.error('Authentication failed:', error)
+    console.error('❌ [AUTH DEBUG] Authentication failed with error:', error)
+    console.error('❌ [AUTH DEBUG] Error stack:', error)
     return { error: ERROR_MESSAGES.SERVER_ERROR }
   }
+
 }
 
   // Register new user

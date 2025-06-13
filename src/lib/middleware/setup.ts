@@ -59,13 +59,34 @@ async function getSetupStatus(): Promise<SetupStatus> {
   }
 
   try {
+    // First check if we can even connect to database
+    const canConnect = await checkDatabaseConnection()
+    if (!canConnect) {
+      return {
+        isComplete: false,
+        error: 'Database connection not available',
+      }
+    }
+
     // Connect to database and check setup status
     await connectToDatabase()
-    const settings = await SystemSettingsModel.getSettings()
     
-    const status: SetupStatus = {
-      isComplete: settings.isSetupComplete,
-      siteName: settings.siteName,
+    // Check if there's an actual settings document (not just default)
+    const settings = await SystemSettingsModel.findOne()
+    
+    let status: SetupStatus
+    if (!settings) {
+      // No settings document exists = setup not complete
+      status = {
+        isComplete: false,
+        siteName: 'Modular App',
+      }
+    } else {
+      // Settings document exists, check if setup is complete
+      status = {
+        isComplete: settings.isSetupComplete,
+        siteName: settings.siteName,
+      }
     }
 
     // Cache the result
@@ -84,6 +105,27 @@ async function getSetupStatus(): Promise<SetupStatus> {
       isComplete: false,
       error: 'Failed to check setup status',
     }
+  }
+}
+
+// Helper function to check database without creating data
+async function checkDatabaseConnection(): Promise<boolean> {
+  try {
+    const mongoUri = process.env.MONGODB_URI
+    if (!mongoUri) {
+      return false
+    }
+    
+    const mongoose = require('mongoose')
+    const testConnection = await mongoose.createConnection(mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    })
+    
+    await testConnection.close()
+    return true
+  } catch (error) {
+    return false
   }
 }
 

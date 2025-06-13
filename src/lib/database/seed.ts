@@ -14,6 +14,13 @@ export async function seedDatabase(force = false) {
     await connectToDatabase()
 
     // Check if database is already seeded
+    const settings = await SystemSettingsModel.findOne()
+    if (!force || !settings?.isSetupComplete) {
+      console.log('❌ Seeding skipped: Setup must be completed first, or use force=true')
+      return
+    }
+
+    // Check if database is already seeded
     const existingUser = await UserModel.findOne()
     if (existingUser && !force) {
       console.log('✅ Database already seeded. Use force=true to reseed.')
