@@ -12,10 +12,7 @@ import {
 import { AUTH_CONFIG, ERROR_MESSAGES } from '@/lib/constants'
 import { 
   signJWT, 
-  verifyJWT, 
-  hashPassword, 
-  verifyPassword, 
-  generateResetToken,
+  verifyJWT,
   getErrorMessage 
 } from '@/lib/utils'
 import { UserModel } from '@/lib/database/models/user'
