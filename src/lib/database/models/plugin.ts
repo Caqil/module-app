@@ -26,7 +26,6 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
     required: [true, 'Plugin ID is required'],
     unique: true,
     trim: true,
-    index: true,
   },
   name: {
     type: String,
@@ -43,7 +42,6 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
     type: String,
     enum: ['installed', 'installing', 'failed', 'disabled'],
     default: 'installing',
-    index: true,
   },
   config: {
     type: Schema.Types.Mixed,
@@ -56,7 +54,6 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   isActive: {
     type: Boolean,
     default: false,
-    index: true,
   },
   manifest: {
     type: Schema.Types.Mixed,
@@ -138,7 +135,6 @@ const pluginBackupSchema = new Schema<IPluginBackupDocument>({
   pluginId: {
     type: String,
     required: [true, 'Plugin ID is required'],
-    index: true,
   },
   pluginName: {
     type: String,

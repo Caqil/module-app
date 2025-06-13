@@ -12,9 +12,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-        <div id="root">{children}</div>
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen bg-background font-sans antialiased">
+        {children}
       </body>
     </html>
   );

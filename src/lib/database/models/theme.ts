@@ -25,7 +25,6 @@ const installedThemeSchema = new Schema<IInstalledThemeDocument>({
     required: [true, 'Theme ID is required'],
     unique: true,
     trim: true,
-    index: true,
   },
   name: {
     type: String,
@@ -42,7 +41,6 @@ const installedThemeSchema = new Schema<IInstalledThemeDocument>({
     type: String,
     enum: ['installed', 'installing', 'failed', 'disabled'],
     default: 'installing',
-    index: true,
   },
   customization: {
     type: Schema.Types.Mixed,
@@ -55,7 +53,6 @@ const installedThemeSchema = new Schema<IInstalledThemeDocument>({
   isActive: {
     type: Boolean,
     default: false,
-    index: true,
   },
   manifest: {
     type: Schema.Types.Mixed,
@@ -134,7 +131,6 @@ const themeBackupSchema = new Schema<IThemeBackupDocument>({
   themeId: {
     type: String,
     required: [true, 'Theme ID is required'],
-    index: true,
   },
   themeName: {
     type: String,

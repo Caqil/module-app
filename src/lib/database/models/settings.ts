@@ -40,7 +40,6 @@ const systemSettingsSchema = new Schema<ISystemSettingsDocument>({
   isSetupComplete: {
     type: Boolean,
     default: false,
-    index: true,
   },
   activeTheme: {
     type: String,
@@ -54,7 +53,6 @@ const systemSettingsSchema = new Schema<ISystemSettingsDocument>({
   maintenanceMode: {
     type: Boolean,
     default: false,
-    index: true,
   },
   customCSS: {
     type: String,

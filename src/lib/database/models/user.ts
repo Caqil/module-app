@@ -2,7 +2,7 @@
 
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import bcrypt from 'bcryptjs'
-import { AUTH_CONFIG, DEFAULT_USER_PREFERENCES } from '@/lib/constants'
+import { AUTH_CONFIG, DEFAULT_USER_PREFERENCES, USER_ROLES } from '@/lib/constants'
 import { UserRole } from '@/types/global'
 import { User } from '@/types/auth'
 
@@ -32,7 +32,6 @@ const userSchema = new Schema<IUserDocument>({
     lowercase: true,
     trim: true,
     match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email'],
-    index: true,
   },
   password: {
     type: String,
@@ -58,19 +57,16 @@ const userSchema = new Schema<IUserDocument>({
   },
   role: {
     type: String,
-    enum: Object.keys(AUTH_CONFIG) as UserRole[],
+     enum: Object.keys(USER_ROLES) as UserRole[],
     default: 'user',
-    index: true,
   },
   isActive: {
     type: Boolean,
     default: true,
-    index: true,
   },
   isEmailVerified: {
     type: Boolean,
     default: false,
-    index: true,
   },
   lastLogin: {
     type: Date,
