@@ -8,7 +8,15 @@ import { UserModel } from '@/lib/database/models/user'
 import { InstalledThemeModel } from '@/lib/database/models/theme'
 import { clearSetupStatusCache } from '@/lib/middleware/setup'
 import { logMiddlewareAction, addSecurityHeaders } from '@/lib/middleware/utils'
-
+let setupStatusCache: {
+  isComplete: boolean
+  timestamp: number
+  ttl: number
+} = {
+  isComplete: false,
+  timestamp: 0,
+  ttl: 30000, // 30 seconds cache
+}
 async function checkDatabaseConnection(): Promise<boolean> {
   try {
     const mongoUri = process.env.MONGODB_URI

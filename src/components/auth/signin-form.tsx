@@ -90,7 +90,7 @@ export function SignInForm() {
           router.push("/admin/dashboard");
         } else {
           console.log("🚀 [SIGNIN FORM] Redirecting to user dashboard");
-          router.push("/dashboard");
+          router.push("/home");
         }
 
         // Force router refresh
