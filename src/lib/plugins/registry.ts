@@ -533,7 +533,102 @@ export class PluginRegistry extends EventEmitter {
       this.state.loading.delete(pluginId)
     }
   }
+getPluginByAdminPageRoute(routePath: string): {
+    plugin: LoadedPlugin;
+    adminPage: PluginAdminPage;
+  } | null {
+    console.log(`🔍 Searching for plugin with admin page route: ${routePath}`);
+    
+    // Search through active plugins
+    for (const [pluginId, plugin] of this.state.plugins) {
+      // Skip inactive plugins
+      if (!this.state.activePlugins.has(pluginId)) {
+        continue;
+      }
 
+      // Skip plugins without admin pages
+      if (!plugin.adminPages || plugin.adminPages.size === 0) {
+        continue;
+      }
+
+      // Check each admin page in the plugin
+      for (const [pagePath, pageInfo] of plugin.adminPages) {
+        if (pagePath === routePath) {
+          console.log(`✅ Found plugin: ${pluginId} for route: ${routePath}`);
+          return {
+            plugin,
+            adminPage: pageInfo
+          };
+        }
+      }
+    }
+
+    console.log(`❌ No plugin found for admin page route: ${routePath}`);
+    return null;
+  }
+
+  // ✅ ALTERNATIVE: Get all active plugins with admin pages (for debugging)
+  getActivePluginsWithAdminPages(): Array<{
+    pluginId: string;
+    plugin: LoadedPlugin;
+    adminPages: Map<string, PluginAdminPage>;
+  }> {
+    const result: Array<{
+      pluginId: string;
+      plugin: LoadedPlugin;
+      adminPages: Map<string, PluginAdminPage>;
+    }> = [];
+
+    for (const [pluginId, plugin] of this.state.plugins) {
+      if (this.state.activePlugins.has(pluginId) && plugin.adminPages && plugin.adminPages.size > 0) {
+        result.push({
+          pluginId,
+          plugin,
+          adminPages: plugin.adminPages
+        });
+      }
+    }
+
+    return result;
+  }
+
+  // ✅ HELPER: Get plugin by ID if active
+  getActivePlugin(pluginId: string): LoadedPlugin | null {
+    if (!this.state.activePlugins.has(pluginId)) {
+      return null;
+    }
+    return this.state.plugins.get(pluginId) || null;
+  }
+
+  // ✅ DEBUG: List all available admin page routes
+  getAllAdminPageRoutes(): Array<{
+    route: string;
+    pluginId: string;
+    pluginName: string;
+    pageTitle: string;
+  }> {
+    const routes: Array<{
+      route: string;
+      pluginId: string;
+      pluginName: string;
+      pageTitle: string;
+    }> = [];
+
+    for (const [pluginId, plugin] of this.state.plugins) {
+      if (this.state.activePlugins.has(pluginId) && plugin.adminPages) {
+        for (const [route, pageInfo] of plugin.adminPages) {
+          routes.push({
+            route,
+            pluginId,
+            pluginName: plugin.manifest?.name || pluginId,
+            pageTitle: pageInfo.title || 'Unknown'
+          });
+        }
+      }
+    }
+
+    return routes;
+  }
   async activatePlugin(pluginId: string, config?: PluginConfig): Promise<void> {
     await this.onPluginActivated(pluginId, config)
   }

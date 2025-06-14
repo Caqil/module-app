@@ -3,172 +3,134 @@ import { NextRequest, NextResponse } from 'next/server'
 import { pathToFileURL } from 'url'
 import path from 'path'
 import fs from 'fs/promises'
-import { pluginRegistry } from '@/lib/plugins/registry'
-import { auth } from '@/lib/auth'
 import { ApiResponse } from '@/types/global'
-import { connectToDatabase } from '@/lib/database/mongodb'
-import { UserModel } from '@/lib/database/models/user'
-import { InstalledThemeModel } from '@/lib/database/models/theme'
-import { InstalledPluginModel } from '@/lib/database/models/plugin'
-import { SystemSettingsModel } from '@/lib/database/models/settings'
-import { generateId, getErrorMessage, hashPassword, verifyPassword } from '@/lib/utils'
+// ✅ REMOVED: All MongoDB imports and connections
 
 interface RouteParams {
   params: { path: string[] }
 }
 
-// Real implementation for dynamic plugin route handler
+// ✅ Plugin route handler without MongoDB
 async function handlePluginRoute(request: NextRequest, { params }: RouteParams) {
   try {
-    await connectToDatabase()
+    // ✅ NO MongoDB connection needed!
 
     const { method } = request
     const routePath = `/${params.path.join('/')}`
-    const routeKey = `${method}:${routePath}`
-
-    // Get all registered plugin routes
-    const allRoutes = pluginRegistry.getAllRoutes()
     
-    // Find matching route
-    let matchedRoute = null
-    let matchedPluginId = null
+    console.log(`🔌 Plugin route called: ${method} ${routePath}`);
 
-    for (const [fullRouteKey, route] of allRoutes) {
-      const [pluginId, storedRouteKey] = fullRouteKey.split(':', 2)
-      if (storedRouteKey === routeKey) {
-        matchedRoute = route
-        matchedPluginId = pluginId
-        break
+    // ✅ Read plugins directly from file system
+    const pluginsDir = path.join(process.cwd(), 'plugins', 'installed');
+    const pluginFolders = await fs.readdir(pluginsDir, { withFileTypes: true });
+
+    // Find which plugin handles this route
+    let matchedPlugin = null;
+    let matchedRoute = null;
+
+    for (const folder of pluginFolders) {
+      if (folder.isDirectory()) {
+        try {
+          // Read plugin manifest
+          const manifestPath = path.join(pluginsDir, folder.name, 'plugin.json');
+          const manifestContent = await fs.readFile(manifestPath, 'utf-8');
+          const manifest = JSON.parse(manifestContent);
+
+          // Check if this plugin has routes that match
+          if (manifest.routes) {
+            for (const route of manifest.routes) {
+              const routeKey = `${route.method}:${route.path}`;
+              const requestKey = `${method}:${routePath}`;
+              
+              if (routeKey === requestKey) {
+                matchedPlugin = { id: folder.name, manifest };
+                matchedRoute = route;
+                console.log(`✅ Found matching route in plugin: ${folder.name}`);
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to read plugin ${folder.name}:`, error);
+        }
       }
+      
+      if (matchedPlugin) break;
     }
 
-    if (!matchedRoute || !matchedPluginId) {
+    if (!matchedPlugin || !matchedRoute) {
       return NextResponse.json<ApiResponse>({
         success: false,
         error: 'Route not found'
       }, { status: 404 })
     }
 
-    // Check permissions
-    if (matchedRoute.permissions && matchedRoute.permissions.length > 0) {
-      const session = await auth.getSession(request)
-      if (!session) {
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: 'Authentication required'
-        }, { status: 401 })
-      }
-
-      // Check if user has required permissions
-      const isAdmin = auth.hasRole(session, 'admin')
-      if (!isAdmin) {
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: 'Insufficient permissions'
-        }, { status: 403 })
-      }
-    }
-
-    // Get the plugin instance
-    const plugin = pluginRegistry.getPlugin(matchedPluginId)
-    if (!plugin || !plugin.isActive) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Plugin not active'
-      }, { status: 503 })
-    }
-
+    // ✅ Execute plugin route handler directly from file system
+    const handlerPath = path.join(process.cwd(), 'plugins', 'installed', matchedPlugin.id, matchedRoute.handler);
+    
     try {
-      // Build handler file path
-      const handlerFilePath = path.join(
-        process.cwd(), 
-        'plugins/installed', 
-        plugin.manifest.id, 
-        matchedRoute.handler
-      )
-
       // Check if handler file exists
-      await fs.access(handlerFilePath)
-
-      // Create plugin context
-      const session = await auth.getSession(request)
-      const pluginContext = {
-        pluginId: plugin.manifest.id,
-        config: plugin.config,
+      await fs.access(handlerPath);
+      
+      // Dynamic import the handler
+      const handlerUrl = pathToFileURL(handlerPath).href;
+      const handlerModule = await import(handlerUrl);
+      
+      // Create context for plugin (simplified, no database)
+      const context = {
         request,
         method,
-        path: routePath,
-        user: session,
-        database: {
-          User: UserModel,
-          Theme: InstalledThemeModel,
-          Plugin: InstalledPluginModel,
-          Settings: SystemSettingsModel,
-        },
-        utils: {
-          generateId,
-          getErrorMessage,
-          hashPassword,
-          verifyPassword,
-        }
+        params: Object.fromEntries(new URL(request.url).searchParams),
+        pluginId: matchedPlugin.id,
+        // ✅ NO database connection in context
+      };
+
+      // Execute handler
+      const handlerFunction = handlerModule.default || handlerModule[method.toLowerCase()];
+      
+      if (typeof handlerFunction === 'function') {
+        const result = await handlerFunction(context);
+        return result;
+      } else {
+        throw new Error(`No handler function found for ${method}`);
       }
 
-      // Dynamic import the handler
-      const handlerModule = await import(pathToFileURL(handlerFilePath).href)
-      const handler = handlerModule.default || handlerModule[method.toLowerCase()] || handlerModule.handler
-
-      if (!handler || typeof handler !== 'function') {
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: 'Invalid plugin handler'
-        }, { status: 500 })
-      }
-
-      // Execute the plugin handler
-      const result = await handler(pluginContext)
-
-      // Handle different return types
-      if (result instanceof NextResponse) {
-        return result
-      }
-
-      if (result && typeof result === 'object') {
-        return NextResponse.json<ApiResponse>(result)
-      }
-
-      return NextResponse.json<ApiResponse>({
-        success: true,
-        data: result
-      })
-
-    } catch (error: any) {
-      // If file doesn't exist or import fails
-      if (error.code === 'ENOENT') {
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: 'Plugin handler not found'
-        }, { status: 404 })
-      }
-
-      console.error(`Plugin route error (${matchedPluginId}):`, error)
+    } catch (error) {
+      console.error(`❌ Plugin handler error (${matchedPlugin.id}):`, error);
+      
       return NextResponse.json<ApiResponse>({
         success: false,
-        error: 'Plugin route execution failed'
-      }, { status: 500 })
+        error: `Plugin handler failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }, { status: 500 });
     }
 
   } catch (error) {
-    console.error('Plugin route handler error:', error)
+    console.error('❌ Plugin route error:', error);
+    
     return NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
-    }, { status: 500 })
+      error: `Plugin route failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }, { status: 500 });
   }
 }
 
-// Export handlers for all HTTP methods
-export const GET = handlePluginRoute
-export const POST = handlePluginRoute
-export const PUT = handlePluginRoute
-export const DELETE = handlePluginRoute
-export const PATCH = handlePluginRoute
+// Export HTTP method handlers
+export async function GET(request: NextRequest, context: RouteParams) {
+  return handlePluginRoute(request, context);
+}
+
+export async function POST(request: NextRequest, context: RouteParams) {
+  return handlePluginRoute(request, context);
+}
+
+export async function PUT(request: NextRequest, context: RouteParams) {
+  return handlePluginRoute(request, context);
+}
+
+export async function DELETE(request: NextRequest, context: RouteParams) {
+  return handlePluginRoute(request, context);
+}
+
+export async function PATCH(request: NextRequest, context: RouteParams) {
+  return handlePluginRoute(request, context);
+}

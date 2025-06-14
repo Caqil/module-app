@@ -35,7 +35,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-import { Badge } from "@/components/ui/badge";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BarChart2Icon } from "lucide-react";
 
@@ -291,10 +291,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [lastLoadTime, setLastLoadTime] = React.useState<string>("");
-
+  const pathname = usePathname();
   // Load plugin admin pages on mount and when page changes
   React.useEffect(() => {
-    console.log(`🏃‍♂️ Sidebar mounting on ${window.location.pathname}`);
+    console.log(`🏃‍♂️ Sidebar mounting on ${pathname}`);
     loadPluginAdminPages();
 
     // Listen for plugin state changes
@@ -303,16 +303,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       loadPluginAdminPages();
     };
 
-    // Listen for page navigation (if using client-side routing)
+    // Listen for page navigation
     const handlePopState = () => {
-      console.log(`🧭 Navigation detected to ${window.location.pathname}`);
-      // Small delay to ensure page is ready
+      console.log(`🧭 Navigation detected to ${pathname}`);
       setTimeout(loadPluginAdminPages, 100);
     };
 
-    // Set up event listeners
-    window.addEventListener("pluginStateChanged", handlePluginStateChange);
-    window.addEventListener("popstate", handlePopState);
+    // ✅ FIXED: Check if window exists before adding listeners
+    if (typeof window !== "undefined") {
+      window.addEventListener("pluginStateChanged", handlePluginStateChange);
+      window.addEventListener("popstate", handlePopState);
+    }
 
     // Listen to fetcher state changes
     const unsubscribe = enhancedPluginFetcher.addListener(() => {
@@ -321,26 +322,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     });
 
     return () => {
-      window.removeEventListener("pluginStateChanged", handlePluginStateChange);
-      window.removeEventListener("popstate", handlePopState);
+      if (typeof window !== "undefined") {
+        window.removeEventListener(
+          "pluginStateChanged",
+          handlePluginStateChange
+        );
+        window.removeEventListener("popstate", handlePopState);
+      }
       unsubscribe();
     };
-  }, []);
+  }, []); // ✅ FIXED: Remove window.location.pathname from dependencies
 
-  // Also trigger on route changes (for Next.js navigation)
+  // ✅ FIXED: Separate useEffect for pathname changes
   React.useEffect(() => {
-    console.log(`📍 Page changed to: ${window.location.pathname}`);
+    console.log(`📍 Page changed to: ${pathname}`);
     // Small delay to ensure the page has rendered
     const timer = setTimeout(loadPluginAdminPages, 200);
     return () => clearTimeout(timer);
-  }, [window.location.pathname]);
+  }, [pathname]); // ✅ Use pathname from usePathname() hook
 
   const loadPluginAdminPages = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log(`📡 Loading plugins for ${window.location.pathname}...`);
+      console.log(`📡 Loading plugins for ${pathname}...`);
 
       // Get plugin data from enhanced fetcher
       const activePlugins = await enhancedPluginFetcher.getPluginData();
