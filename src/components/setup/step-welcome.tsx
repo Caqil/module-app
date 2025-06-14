@@ -1,6 +1,9 @@
+// src/components/setup/step-welcome.tsx
+// Fixed welcome step with clean data passing
+
 "use client";
 
-import { ArrowRight, Rocket, Shield, Palette, Puzzle } from "lucide-react";
+import { ArrowRight, Rocket, Shield, Database, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,7 +14,7 @@ import {
 } from "@/components/ui/card";
 
 interface StepWelcomeProps {
-  onNext: () => void;
+  onNext: (data?: any) => void;
   onPrev: () => void;
   data: any;
   isLoading: boolean;
@@ -24,19 +27,28 @@ const features = [
     description: "JWT-based authentication with role-based access control",
   },
   {
-    icon: Palette,
-    title: "Dynamic Themes",
-    description:
-      "Install and customize themes without rebuilding your application",
+    icon: Database,
+    title: "Database Management",
+    description: "MongoDB integration with robust data modeling",
   },
   {
-    icon: Puzzle,
-    title: "Plugin System",
-    description: "Extend functionality with powerful plugins and integrations",
+    icon: User,
+    title: "Admin Dashboard",
+    description: "Comprehensive admin panel for system management",
   },
 ];
 
 export function StepWelcome({ onNext, isLoading }: StepWelcomeProps) {
+  // UPDATED: Pass clean data object (or no data for welcome step)
+  const handleNext = () => {
+    const cleanData = {
+      acknowledged: true,
+      timestamp: new Date().toISOString(),
+    };
+
+    onNext(cleanData);
+  };
+
   return (
     <div className="space-y-6">
       {/* Welcome Message */}
@@ -49,30 +61,13 @@ export function StepWelcome({ onNext, isLoading }: StepWelcomeProps) {
         <div>
           <h2 className="text-2xl font-bold mb-2">Welcome to Modular App</h2>
           <p className="text-muted-foreground max-w-md mx-auto">
-            You're about to set up a powerful, extensible web application with
-            theme and plugin support. Let's get you started in just a few steps.
+            You're about to set up a powerful, extensible web application. Let's
+            get you started in just a few simple steps.
           </p>
         </div>
       </div>
 
       {/* Features Grid */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {features.map((feature, index) => (
-          <Card key={index} className="text-center">
-            <CardHeader className="pb-4">
-              <div className="flex justify-center mb-2">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <feature.icon className="w-6 h-6 text-primary" />
-                </div>
-              </div>
-              <CardTitle className="text-lg">{feature.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>{feature.description}</CardDescription>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
 
       {/* Setup Information */}
       <Card className="bg-muted/50">
@@ -85,7 +80,7 @@ export function StepWelcome({ onNext, isLoading }: StepWelcomeProps) {
                 <div>
                   <div className="font-medium">Database Connection</div>
                   <div className="text-sm text-muted-foreground">
-                    Configure MongoDB for data storage
+                    Connect to your MongoDB database
                   </div>
                 </div>
               </div>
@@ -98,57 +93,46 @@ export function StepWelcome({ onNext, isLoading }: StepWelcomeProps) {
                   </div>
                 </div>
               </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                <div>
-                  <div className="font-medium">Default Theme</div>
-                  <div className="text-sm text-muted-foreground">
-                    Choose and configure your initial theme
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                <div>
-                  <div className="font-medium">System Configuration</div>
-                  <div className="text-sm text-muted-foreground">
-                    Configure basic settings and preferences
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Requirements */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Before we begin</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm">MongoDB database (local or cloud)</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm">Administrator email address</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span className="text-sm">About 5 minutes of your time</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Setup Stats */}
+      <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="space-y-2">
+          <div className="text-2xl font-bold text-primary">3</div>
+          <div className="text-sm text-muted-foreground">Simple Steps</div>
+        </div>
+        <div className="space-y-2">
+          <div className="text-2xl font-bold text-primary">5</div>
+          <div className="text-sm text-muted-foreground">Minutes Setup</div>
+        </div>
+        <div className="space-y-2">
+          <div className="text-2xl font-bold text-primary">100%</div>
+          <div className="text-sm text-muted-foreground">Ready to Use</div>
+        </div>
+      </div>
 
-      {/* Action Button */}
-      <div className="flex justify-end pt-4">
-        <Button onClick={onNext} disabled={isLoading} size="lg">
-          Get Started
-          <ArrowRight className="ml-2 w-4 h-4" />
+      {/* Navigation */}
+      <div className="flex justify-center">
+        <Button
+          onClick={handleNext}
+          disabled={isLoading}
+          size="lg"
+          className="min-w-[200px]"
+        >
+          {isLoading ? (
+            <>
+              <Rocket className="mr-2 w-4 h-4 animate-pulse" />
+              Starting Setup...
+            </>
+          ) : (
+            <>
+              Get Started
+              <ArrowRight className="ml-2 w-4 h-4" />
+            </>
+          )}
         </Button>
       </div>
     </div>

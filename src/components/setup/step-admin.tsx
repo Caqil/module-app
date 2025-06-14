@@ -1,3 +1,6 @@
+// src/components/setup/step-admin.tsx
+// Fixed admin step with clean data passing
+
 "use client";
 
 import { useState } from "react";
@@ -76,6 +79,8 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
 
+    if (score < 2)
+      return { strength: score, label: "Very Weak", color: "bg-red-500" };
     if (score < 3)
       return { strength: score, label: "Weak", color: "bg-red-500" };
     if (score < 4)
@@ -85,8 +90,18 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
 
   const passwordStrength = getPasswordStrength(watchPassword);
 
+  // UPDATED: Pass only plain data object
   const handleNext = async (formData: AdminFormData) => {
-    onNext(formData);
+    // Extract only the values we need
+    const cleanData = {
+      siteName: formData.siteName,
+      adminEmail: formData.adminEmail,
+      adminPassword: formData.adminPassword,
+      adminFirstName: formData.adminFirstName,
+      adminLastName: formData.adminLastName,
+    };
+
+    onNext(cleanData);
   };
 
   return (
@@ -132,8 +147,7 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      This will be displayed in the browser title and throughout
-                      the application
+                      This will appear in the admin panel and page titles
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -142,7 +156,7 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
             </CardContent>
           </Card>
 
-          {/* Administrator Account */}
+          {/* Admin Account */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center space-x-2">
@@ -150,12 +164,12 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
                 <span>Administrator Account</span>
               </CardTitle>
               <CardDescription>
-                Create your admin user account with full system access
+                Create your admin account for system management
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Name Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="adminFirstName"
@@ -252,35 +266,27 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
                       </div>
                     </FormControl>
                     <FormDescription>
-                      Password must be at least 8 characters with uppercase,
-                      lowercase, number, and special character
+                      Must be at least 8 characters with uppercase, lowercase,
+                      number, and special character
                     </FormDescription>
                     <FormMessage />
 
                     {/* Password Strength Indicator */}
                     {watchPassword && (
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <div className="text-sm">Strength:</div>
-                          <div className="flex-1 bg-muted rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full transition-all ${passwordStrength.color}`}
-                              style={{
-                                width: `${(passwordStrength.strength / 5) * 100}%`,
-                              }}
-                            />
-                          </div>
-                          <div
-                            className={`text-sm font-medium ${
-                              passwordStrength.strength < 3
-                                ? "text-red-600"
-                                : passwordStrength.strength < 4
-                                  ? "text-yellow-600"
-                                  : "text-green-600"
-                            }`}
-                          >
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Password Strength:</span>
+                          <span className={`font-medium`}>
                             {passwordStrength.label}
-                          </div>
+                          </span>
+                        </div>
+                        <div className="mt-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${passwordStrength.color}`}
+                            style={{
+                              width: `${(passwordStrength.strength / 5) * 100}%`,
+                            }}
+                          />
                         </div>
                       </div>
                     )}
@@ -290,70 +296,13 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
             </CardContent>
           </Card>
 
-          {/* Security Notice */}
-          <Alert>
-            <Shield className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Important:</strong> This admin account will have full
-              access to your application. Make sure to use a strong password and
-              keep your credentials secure. You can create additional admin
-              users later from the admin panel.
-            </AlertDescription>
-          </Alert>
-
-          {/* Account Features */}
-          <Card className="bg-muted/50">
-            <CardHeader>
-              <CardTitle className="text-lg">Admin Account Features</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="flex items-start space-x-3">
-                  <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                  <div>
-                    <div className="font-medium">Full System Access</div>
-                    <div className="text-sm text-muted-foreground">
-                      Manage all users, themes, and plugins
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                  <div>
-                    <div className="font-medium">System Configuration</div>
-                    <div className="text-sm text-muted-foreground">
-                      Configure site settings and preferences
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                  <div>
-                    <div className="font-medium">Theme Management</div>
-                    <div className="text-sm text-muted-foreground">
-                      Install, activate, and customize themes
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                  <div>
-                    <div className="font-medium">Plugin Control</div>
-                    <div className="text-sm text-muted-foreground">
-                      Install and manage plugins and extensions
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Navigation */}
-          <div className="flex justify-between pt-4">
+          <div className="flex items-center justify-between">
             <Button type="button" variant="outline" onClick={onPrev}>
               <ArrowLeft className="mr-2 w-4 h-4" />
-              Previous
+              Back
             </Button>
+
             <Button type="submit" disabled={isLoading}>
               {isLoading ? (
                 <>
@@ -362,7 +311,7 @@ export function StepAdmin({ onNext, onPrev, data, isLoading }: StepAdminProps) {
                 </>
               ) : (
                 <>
-                  Next
+                  Complete Setup
                   <ArrowRight className="ml-2 w-4 h-4" />
                 </>
               )}

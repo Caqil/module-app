@@ -1,3 +1,6 @@
+// src/components/setup/setup-wizard.tsx
+// Fixed setup wizard with proper data sanitization
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,7 +14,7 @@ import { ApiResponse } from "@/types/global";
 import { StepWelcome } from "./step-welcome";
 import { StepDatabase } from "./step-database";
 import { StepAdmin } from "./step-admin";
-import { StepTheme } from "./step-theme";
+// NOTE: StepTheme removed - theme setup moved to admin panel
 
 interface SetupStep {
   id: string;
@@ -31,6 +34,7 @@ type SetupData = {
   [K in (typeof SETUP_STEPS)[number]["id"]]?: any;
 };
 
+// UPDATED: Theme step removed
 const SETUP_STEPS: SetupStep[] = [
   {
     id: "welcome",
@@ -50,13 +54,48 @@ const SETUP_STEPS: SetupStep[] = [
     description: "Create your administrator account",
     component: StepAdmin,
   },
-  {
-    id: "theme",
-    title: "Theme Selection",
-    description: "Choose your default theme",
-    component: StepTheme,
-  },
 ];
+
+// ADDED: Data sanitization utility
+const sanitizeData = (data: any): any => {
+  if (data === null || data === undefined) {
+    return data;
+  }
+
+  if (
+    typeof data === "string" ||
+    typeof data === "number" ||
+    typeof data === "boolean"
+  ) {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(sanitizeData);
+  }
+
+  if (typeof data === "object") {
+    const sanitized: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      // Skip React-specific properties and functions
+      if (
+        typeof value === "function" ||
+        key.startsWith("__react") ||
+        key.startsWith("_react") ||
+        key === "ref" ||
+        key === "key" ||
+        value instanceof HTMLElement ||
+        value instanceof Event
+      ) {
+        continue;
+      }
+      sanitized[key] = sanitizeData(value);
+    }
+    return sanitized;
+  }
+
+  return data;
+};
 
 export function SetupWizard() {
   const [currentStep, setCurrentStep] = useState(0);
@@ -90,103 +129,113 @@ export function SetupWizard() {
   };
 
   const handleNext = async (stepData?: any) => {
+    const currentStepData = SETUP_STEPS[currentStep];
     setError(null);
-    setIsLoading(true);
 
-    try {
-      const currentStepId = SETUP_STEPS[currentStep].id;
-      const newSetupData = { ...setupData, [currentStepId]: stepData };
-      setSetupData(newSetupData);
+    // UPDATED: Sanitize data before saving
+    const sanitizedData = sanitizeData(stepData);
 
-      // Handle API calls for specific steps
-      if (currentStepId === "database" && stepData) {
+    // Save current step data
+    if (sanitizedData) {
+      setSetupData((prev) => ({
+        ...prev,
+        [currentStepData.id]: sanitizedData,
+      }));
+    }
+
+    // If this is the last step, complete setup
+    if (currentStep === SETUP_STEPS.length - 1) {
+      await completeSetup({
+        ...setupData,
+        [currentStepData.id]: sanitizedData,
+      });
+      return;
+    }
+
+    // UPDATED: Only make API calls for steps that need backend processing
+    const stepsRequiringAPI = ["database", "admin"];
+
+    if (stepsRequiringAPI.includes(currentStepData.id)) {
+      // Process the current step via API
+      setIsLoading(true);
+
+      try {
         const response = await fetch("/api/setup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            step: "database",
-            data: stepData,
+            step: currentStepData.id,
+            data: sanitizedData,
           }),
         });
 
         const result: ApiResponse = await response.json();
-        if (!result.success) {
-          setError(result.error || "Database connection failed");
-          return;
+
+        if (result.success) {
+          // Move to next step
+          setCurrentStep((prev) => Math.min(prev + 1, SETUP_STEPS.length - 1));
+        } else {
+          setError(result.error || "Setup step failed");
         }
+      } catch (error) {
+        console.error("Setup step failed:", error);
+        setError("Network error. Please try again.");
+      } finally {
+        setIsLoading(false);
       }
-
-      if (currentStepId === "admin" && stepData) {
-        const response = await fetch("/api/setup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            step: "admin",
-            data: stepData,
-          }),
-        });
-
-        const result: ApiResponse = await response.json();
-        if (!result.success) {
-          setError(result.error || "Admin account creation failed");
-          return;
-        }
-      }
-
-      // Move to next step or complete setup
-      if (currentStep < SETUP_STEPS.length - 1) {
-        setCurrentStep(currentStep + 1);
-      } else {
-        // Complete setup
-        await completeSetup();
-      }
-    } catch (error) {
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
-      setIsLoading(false);
+    } else {
+      // For frontend-only steps (like welcome), just move to next step
+      setCurrentStep((prev) => Math.min(prev + 1, SETUP_STEPS.length - 1));
     }
   };
 
   const handlePrev = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
+    setCurrentStep((prev) => Math.max(prev - 1, 0));
+    setError(null);
   };
 
-  const completeSetup = async () => {
+  const completeSetup = async (allData: SetupData) => {
+    setIsLoading(true);
+    setError(null);
+
     try {
+      // UPDATED: Sanitize all data before sending
+      const sanitizedAllData = sanitizeData(allData);
+
       const response = await fetch("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           step: "complete",
-          data: {},
+          data: sanitizedAllData,
         }),
       });
 
       const result: ApiResponse = await response.json();
+
       if (result.success) {
-        // Redirect to admin login
-        router.push("/signin?message=Setup completed successfully");
+        // Redirect to signin page after successful setup so user can log in
+        router.push(
+          "/signin?message=Setup completed successfully! Please sign in with your admin account."
+        );
       } else {
-        setError(result.error || "Failed to complete setup");
+        setError(result.error || "Setup completion failed");
       }
     } catch (error) {
-      setError("Failed to complete setup. Please try again.");
+      console.error("Setup completion failed:", error);
+      setError("Network error during setup completion");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   if (isCheckingStatus) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/50">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin mb-4" />
-            <p className="text-sm text-muted-foreground">
-              Checking setup status...
-            </p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto" />
+          <p className="text-muted-foreground">Checking setup status...</p>
+        </div>
       </div>
     );
   }
@@ -194,52 +243,39 @@ export function SetupWizard() {
   const CurrentStepComponent = SETUP_STEPS[currentStep].component;
 
   return (
-    <div className="min-h-screen bg-muted/50 py-8">
-      <div className="container max-w-4xl mx-auto px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
+      <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Application Setup</h1>
-          <p className="text-muted-foreground">
-            Let's get your modular application up and running
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            Setup Your Application
+          </h1>
+          <p className="text-slate-600">
+            Let's get your modular application configured and ready to use
           </p>
         </div>
 
         {/* Progress Steps */}
         <div className="mb-8">
-          <div className="flex items-center justify-center space-x-4 overflow-x-auto pb-4">
+          <div className="flex items-center justify-between">
             {SETUP_STEPS.map((step, index) => (
-              <div
-                key={step.id}
-                className="flex items-center space-x-2 min-w-0 flex-shrink-0"
-              >
-                <div className="flex flex-col items-center space-y-1">
-                  <div
-                    className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors ${
-                      index < currentStep
-                        ? "bg-primary border-primary text-primary-foreground"
-                        : index === currentStep
-                          ? "border-primary text-primary"
-                          : "border-muted-foreground/30 text-muted-foreground"
-                    }`}
-                  >
-                    {index < currentStep ? (
-                      <CheckCircle className="w-5 h-5" />
-                    ) : (
-                      <span className="text-sm font-medium">{index + 1}</span>
-                    )}
-                  </div>
-                  <div className="text-center min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {step.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {step.description}
-                    </div>
-                  </div>
+              <div key={step.id} className="flex items-center">
+                <div
+                  className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                    index <= currentStep
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {index < currentStep ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    index + 1
+                  )}
                 </div>
                 {index < SETUP_STEPS.length - 1 && (
                   <div
-                    className={`w-8 h-0.5 ${
+                    className={`w-12 h-1 mx-2 rounded ${
                       index < currentStep
                         ? "bg-primary"
                         : "bg-muted-foreground/30"

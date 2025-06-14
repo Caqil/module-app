@@ -1,3 +1,6 @@
+// src/components/setup/step-database.tsx
+// Fixed database step with clean data passing
+
 "use client";
 
 import { useState } from "react";
@@ -101,12 +104,20 @@ export function StepDatabase({
     }
   };
 
+  // UPDATED: Pass only plain data object
   const handleNext = async (formData: DatabaseFormData) => {
     if (connectionStatus !== "success") {
       setConnectionError("Please test your database connection first");
       return;
     }
-    onNext(formData);
+
+    // Extract only the values we need
+    const cleanData = {
+      mongodbUri: formData.mongodbUri,
+      testConnection: formData.testConnection,
+    };
+
+    onNext(cleanData);
   };
 
   const getConnectionStatusIcon = () => {
@@ -243,49 +254,13 @@ export function StepDatabase({
             </CardContent>
           </Card>
 
-          {/* Connection Examples */}
-          <Card className="bg-muted/50">
-            <CardHeader>
-              <CardTitle className="text-lg">Connection Examples</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <div className="font-medium text-sm">Local MongoDB:</div>
-                <code className="text-xs bg-background px-2 py-1 rounded">
-                  mongodb://localhost:27017/modular-app
-                </code>
-              </div>
-              <div>
-                <div className="font-medium text-sm">MongoDB Atlas:</div>
-                <code className="text-xs bg-background px-2 py-1 rounded">
-                  mongodb+srv://username:password@cluster.mongodb.net/modular-app
-                </code>
-              </div>
-              <div>
-                <div className="font-medium text-sm">With Authentication:</div>
-                <code className="text-xs bg-background px-2 py-1 rounded">
-                  mongodb://username:password@localhost:27017/modular-app
-                </code>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Security Notice */}
-          <Alert>
-            <Database className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Security Note:</strong> Your connection string will be
-              stored securely in environment variables. Make sure to use strong
-              credentials and restrict database access to your application only.
-            </AlertDescription>
-          </Alert>
-
           {/* Navigation */}
-          <div className="flex justify-between pt-4">
+          <div className="flex items-center justify-between">
             <Button type="button" variant="outline" onClick={onPrev}>
               <ArrowLeft className="mr-2 w-4 h-4" />
-              Previous
+              Back
             </Button>
+
             <Button
               type="submit"
               disabled={isLoading || connectionStatus !== "success"}
@@ -293,7 +268,7 @@ export function StepDatabase({
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 w-4 h-4 animate-spin" />
-                  Configuring...
+                  Processing...
                 </>
               ) : (
                 <>

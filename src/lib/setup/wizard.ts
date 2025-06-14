@@ -1,4 +1,5 @@
-// Setup wizard logic and utilities
+// src/lib/setup/wizard.ts
+// Setup wizard logic with theme step removed
 
 import { ApiResponse } from '@/types/global'
 
@@ -24,6 +25,7 @@ export class SetupWizard {
     this.state = {
       currentStep: 0,
       isComplete: false,
+      // UPDATED: Theme step removed
       steps: [
         {
           id: 'welcome',
@@ -41,12 +43,6 @@ export class SetupWizard {
           id: 'admin',
           title: 'Admin Account',
           description: 'Create your administrator account',
-          completed: false,
-        },
-        {
-          id: 'theme',
-          title: 'Theme Selection',
-          description: 'Choose your default theme',
           completed: false,
         },
       ],
@@ -133,6 +129,7 @@ export class SetupWizard {
 }
 
 // Setup validation utilities
+// UPDATED: Theme validation removed
 export const validateSetupStep = async (
   stepId: string,
   data: any
@@ -147,9 +144,6 @@ export const validateSetupStep = async (
 
     case 'admin':
       return validateAdminStep(data)
-
-    case 'theme':
-      return validateThemeStep(data)
 
     default:
       return { success: false, error: 'Invalid setup step' }
@@ -203,18 +197,6 @@ const validateAdminStep = (data: any) => {
       success: false,
       error: 'Password must be at least 8 characters with uppercase, lowercase, number, and special character',
     }
-  }
-
-  return { success: true }
-}
-
-const validateThemeStep = (data: any) => {
-  if (!data.selectedTheme) {
-    return { success: false, error: 'Please select a theme' }
-  }
-
-  if (!data.colorMode) {
-    return { success: false, error: 'Please select a color mode' }
   }
 
   return { success: true }
@@ -285,10 +267,9 @@ export const getSetupProgress = (steps: SetupStep[]): {
 }
 
 // Default setup configuration
+// UPDATED: Theme configuration removed
 export const DEFAULT_SETUP_CONFIG = {
   siteName: 'Modular App',
-  theme: 'default',
-  colorMode: 'system',
   features: {
     userRegistration: true,
     emailVerification: false,
@@ -297,6 +278,7 @@ export const DEFAULT_SETUP_CONFIG = {
 }
 
 // Setup step metadata
+// UPDATED: Theme metadata removed
 export const SETUP_STEP_METADATA = {
   welcome: {
     estimatedTime: '1 minute',
@@ -312,10 +294,5 @@ export const SETUP_STEP_METADATA = {
     estimatedTime: '2 minutes',
     requirements: ['Email address', 'Strong password'],
     optional: false,
-  },
-  theme: {
-    estimatedTime: '1 minute',
-    requirements: [],
-    optional: true,
   },
 } as const
