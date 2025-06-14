@@ -51,6 +51,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 // Navigation components
 function NavMain({
@@ -212,7 +214,51 @@ function NavUser({
     avatar: string;
   };
 }) {
+  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const { isMobile } = useSidebar();
+  const handleAdminLogout = async () => {
+    try {
+      setIsSigningOut(true);
+      console.log("🚪 [ADMIN] Starting admin logout...");
+
+      const response = await fetch("/api/auth/signout", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      });
+
+      console.log(
+        "📤 [ADMIN] Logout API response:",
+        response.status,
+        response.ok
+      );
+
+      // Clear any client-side storage
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("user");
+          localStorage.removeItem("session");
+          sessionStorage.clear();
+        } catch (e) {
+          console.warn("Could not clear client storage:", e);
+        }
+      }
+
+      // Force complete page reload to ensure all state is cleared
+      console.log("🔄 [ADMIN] Redirecting to signin...");
+      window.location.href = "/signin?message=Admin logged out successfully";
+    } catch (error) {
+      console.error("❌ [ADMIN] Logout error:", error);
+      // Force logout even on error
+      window.location.href = "/signin?message=Logged out";
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -261,14 +307,18 @@ function NavUser({
                 <IconUserCircle />
                 Account
               </DropdownMenuItem>
-              
+
               <DropdownMenuItem>
                 <IconNotification />
                 Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleAdminLogout}
+              disabled={isSigningOut}
+              className="cursor-pointer focus:bg-destructive focus:text-destructive-foreground"
+            >
               <IconLogout />
               Log out
             </DropdownMenuItem>

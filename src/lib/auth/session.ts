@@ -180,15 +180,40 @@ export class SessionManager {
     }
   }
 
-  // Clear session cookies
-  clearSessionCookies(response: NextResponse): void {
-    response.cookies.delete(AUTH_CONFIG.SESSION_COOKIE_NAME)
-    response.cookies.delete(AUTH_CONFIG.REFRESH_COOKIE_NAME)
+
+clearSessionCookies(response: NextResponse): void {
+  // Clear with all possible attributes to ensure removal
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 0, // Expire immediately
+    expires: new Date(0), // Set to past date
   }
 
-  // Authenticate user login
-  // Temporary Debug Patch for src/lib/auth/session.ts
-// Replace the authenticateUser function with this version to get detailed debug info
+  // Clear main session cookies
+  response.cookies.set(AUTH_CONFIG.SESSION_COOKIE_NAME, '', cookieOptions)
+  response.cookies.set(AUTH_CONFIG.REFRESH_COOKIE_NAME, '', cookieOptions)
+  
+  // Also use delete method as backup
+  response.cookies.delete(AUTH_CONFIG.SESSION_COOKIE_NAME)
+  response.cookies.delete(AUTH_CONFIG.REFRESH_COOKIE_NAME)
+  
+  // Clear any legacy cookie names that might exist
+  const legacyCookieNames = [
+    'session',
+    'auth-token', 
+    'refresh-token',
+    'user-session',
+    'access-token'
+  ]
+  
+  legacyCookieNames.forEach(cookieName => {
+    response.cookies.set(cookieName, '', cookieOptions)
+    response.cookies.delete(cookieName)
+  })
+}
 
 async authenticateUser(credentials: LoginCredentials): Promise<{ user: User; session: AuthSession } | { error: string }> {
   try {
