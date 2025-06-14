@@ -198,9 +198,9 @@ export class PluginRegistry extends EventEmitter {
       } catch (error) {
         console.warn('Auto-sync failed:', error)
       }
-    }, 30000)
+    }, 300000)
 
-    console.log('🔄 Auto-sync started (30s interval)')
+    console.log('🔄 Auto-sync started (5m interval)')
   }
 
   // Stop auto-sync

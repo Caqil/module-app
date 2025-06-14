@@ -1,136 +1,253 @@
+// src/app/api/plugins/render/[pluginId]/[...path]/route.ts
+// API to render plugin components in iframe (fallback method)
 
-import { NextRequest, NextResponse } from 'next/server'
-import { pathToFileURL } from 'url'
-import path from 'path'
-import fs from 'fs/promises'
-import { ApiResponse } from '@/types/global'
-// ✅ REMOVED: All MongoDB imports and connections
+import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs/promises';
+import path from 'path';
+import { auth } from '@/lib/auth';
 
 interface RouteParams {
-  params: { path: string[] }
+  params: {
+    pluginId: string;
+    path: string[];
+  };
 }
 
-// ✅ Plugin route handler without MongoDB
-async function handlePluginRoute(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    // ✅ NO MongoDB connection needed!
+    const { pluginId, path: filePath } = params;
+    const componentPath = filePath.join('/');
 
-    const { method } = request
-    const routePath = `/${params.path.join('/')}`
-    
-    console.log(`🔌 Plugin route called: ${method} ${routePath}`);
+    console.log(`🖼️ Rendering plugin component: ${pluginId}/${componentPath}`);
 
-    // ✅ Read plugins directly from file system
-    const pluginsDir = path.join(process.cwd(), 'plugins', 'installed');
-    const pluginFolders = await fs.readdir(pluginsDir, { withFileTypes: true });
-
-    // Find which plugin handles this route
-    let matchedPlugin = null;
-    let matchedRoute = null;
-
-    for (const folder of pluginFolders) {
-      if (folder.isDirectory()) {
-        try {
-          // Read plugin manifest
-          const manifestPath = path.join(pluginsDir, folder.name, 'plugin.json');
-          const manifestContent = await fs.readFile(manifestPath, 'utf-8');
-          const manifest = JSON.parse(manifestContent);
-
-          // Check if this plugin has routes that match
-          if (manifest.routes) {
-            for (const route of manifest.routes) {
-              const routeKey = `${route.method}:${route.path}`;
-              const requestKey = `${method}:${routePath}`;
-              
-              if (routeKey === requestKey) {
-                matchedPlugin = { id: folder.name, manifest };
-                matchedRoute = route;
-                console.log(`✅ Found matching route in plugin: ${folder.name}`);
-                break;
-              }
-            }
-          }
-        } catch (error) {
-          console.warn(`⚠️ Failed to read plugin ${folder.name}:`, error);
-        }
-      }
-      
-      if (matchedPlugin) break;
+    // Security: Admin access required
+    const session = await auth.getSession(request);
+    if (!session || !auth.hasRole(session, 'admin')) {
+      return new NextResponse(`
+        <html>
+          <body>
+            <div style="padding: 20px; color: red; font-family: Arial;">
+              ❌ Admin access required to view plugin components
+            </div>
+          </body>
+        </html>
+      `, {
+        status: 403,
+        headers: { 'Content-Type': 'text/html' }
+      });
     }
 
-    if (!matchedPlugin || !matchedRoute) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Route not found'
-      }, { status: 404 })
-    }
-
-    // ✅ Execute plugin route handler directly from file system
-    const handlerPath = path.join(process.cwd(), 'plugins', 'installed', matchedPlugin.id, matchedRoute.handler);
+    // Read plugin manifest
+    const manifestPath = path.join(process.cwd(), 'plugins', 'installed', pluginId, 'plugin.json');
+    let manifest;
     
     try {
-      // Check if handler file exists
-      await fs.access(handlerPath);
-      
-      // Dynamic import the handler
-      const handlerUrl = pathToFileURL(handlerPath).href;
-      const handlerModule = await import(handlerUrl);
-      
-      // Create context for plugin (simplified, no database)
-      const context = {
-        request,
-        method,
-        params: Object.fromEntries(new URL(request.url).searchParams),
-        pluginId: matchedPlugin.id,
-        // ✅ NO database connection in context
-      };
-
-      // Execute handler
-      const handlerFunction = handlerModule.default || handlerModule[method.toLowerCase()];
-      
-      if (typeof handlerFunction === 'function') {
-        const result = await handlerFunction(context);
-        return result;
-      } else {
-        throw new Error(`No handler function found for ${method}`);
-      }
-
-    } catch (error) {
-      console.error(`❌ Plugin handler error (${matchedPlugin.id}):`, error);
-      
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: `Plugin handler failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }, { status: 500 });
+      const manifestContent = await fs.readFile(manifestPath, 'utf-8');
+      manifest = JSON.parse(manifestContent);
+    } catch {
+      return new NextResponse(`
+        <html>
+          <body>
+            <div style="padding: 20px; color: red; font-family: Arial;">
+              ❌ Plugin manifest not found: ${pluginId}
+            </div>
+          </body>
+        </html>
+      `, {
+        status: 404,
+        headers: { 'Content-Type': 'text/html' }
+      });
     }
 
-  } catch (error) {
-    console.error('❌ Plugin route error:', error);
+    // Read component file
+    const fullComponentPath = path.join(process.cwd(), 'plugins', 'installed', pluginId, componentPath);
+    let componentCode;
     
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: `Plugin route failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-    }, { status: 500 });
+    try {
+      componentCode = await fs.readFile(fullComponentPath, 'utf-8');
+    } catch {
+      return new NextResponse(`
+        <html>
+          <body>
+            <div style="padding: 20px; color: red; font-family: Arial;">
+              ❌ Component file not found: ${componentPath}
+            </div>
+          </body>
+        </html>
+      `, {
+        status: 404,
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+
+    // Create iframe HTML that renders the plugin component
+    const iframeHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${manifest.name} - ${componentPath}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f9fafb;
+    }
+    .plugin-container {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .plugin-header {
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }
+    .plugin-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+      margin: 0 0 4px 0;
+    }
+    .plugin-description {
+      color: #6b7280;
+      font-size: 14px;
+      margin: 0;
+    }
+    .component-info {
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .code-preview {
+      background: #1f2937;
+      color: #f9fafb;
+      border-radius: 6px;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      overflow: auto;
+      max-height: 300px;
+    }
+    .warning {
+      background: #fef3c7;
+      border: 1px solid #d97706;
+      color: #92400e;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="plugin-container">
+    <div class="plugin-header">
+      <h1 class="plugin-title">${manifest.name}</h1>
+      <p class="plugin-description">${manifest.description || 'No description available'}</p>
+    </div>
+    
+    <div class="component-info">
+      <strong>Plugin ID:</strong> ${pluginId}<br>
+      <strong>Component:</strong> ${componentPath}<br>
+      <strong>Version:</strong> ${manifest.version}<br>
+      <strong>Author:</strong> ${manifest.author?.name || 'Unknown'}
+    </div>
+
+    <div class="warning">
+      ⚠️ <strong>Development Mode:</strong> This component is being rendered in an iframe for security. 
+      In production, components would be properly transpiled and rendered natively.
+    </div>
+
+    <h3>Component Source Code:</h3>
+    <div class="code-preview">${escapeHtml(componentCode)}</div>
+
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+      <p style="color: #6b7280; font-size: 14px; margin: 0;">
+        💡 <strong>Next Step:</strong> Implement proper JSX transpilation for dynamic rendering.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // Basic plugin component simulation
+    console.log('Plugin component loaded:', {
+      pluginId: '${pluginId}',
+      component: '${componentPath}',
+      manifest: ${JSON.stringify(manifest, null, 2)}
+    });
+
+    // Simulate plugin functionality
+    if ('${pluginId}' === 'oauth-plugin') {
+      console.log('OAuth plugin detected - would initialize OAuth handlers');
+    }
+
+    // Send message to parent frame
+    window.parent.postMessage({
+      type: 'plugin-loaded',
+      pluginId: '${pluginId}',
+      component: '${componentPath}',
+      status: 'success'
+    }, '*');
+  </script>
+</body>
+</html>
+    `;
+
+    return new NextResponse(iframeHTML, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-Plugin-Id': pluginId,
+        'X-Component': componentPath,
+      },
+    });
+
+  } catch (error) {
+    console.error('❌ Plugin render error:', error);
+    
+    const errorHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Plugin Render Error</title>
+  <style>
+    body { font-family: Arial; padding: 20px; color: #dc2626; }
+    .error { background: #fef2f2; border: 1px solid #fecaca; padding: 16px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="error">
+    <h2>❌ Plugin Render Error</h2>
+    <p><strong>Plugin:</strong> ${params.pluginId}</p>
+    <p><strong>Component:</strong> ${params.path.join('/')}</p>
+    <p><strong>Error:</strong> ${error instanceof Error ? error.message : 'Unknown error'}</p>
+  </div>
+</body>
+</html>
+    `;
+
+    return new NextResponse(errorHTML, {
+      status: 500,
+      headers: { 'Content-Type': 'text/html' }
+    });
   }
 }
 
-// Export HTTP method handlers
-export async function GET(request: NextRequest, context: RouteParams) {
-  return handlePluginRoute(request, context);
-}
-
-export async function POST(request: NextRequest, context: RouteParams) {
-  return handlePluginRoute(request, context);
-}
-
-export async function PUT(request: NextRequest, context: RouteParams) {
-  return handlePluginRoute(request, context);
-}
-
-export async function DELETE(request: NextRequest, context: RouteParams) {
-  return handlePluginRoute(request, context);
-}
-
-export async function PATCH(request: NextRequest, context: RouteParams) {
-  return handlePluginRoute(request, context);
+// Helper function to escape HTML
+function escapeHtml(text: string): string {
+  const div = { innerHTML: '' };
+  const textNode = { textContent: text };
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
