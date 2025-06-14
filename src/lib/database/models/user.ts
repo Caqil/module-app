@@ -1,4 +1,3 @@
-
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import bcrypt from 'bcryptjs'
 import { UserRole } from '@/types/global'
@@ -28,7 +27,7 @@ const userSchema = new Schema<IUserDocument>({
   email: {
     type: String,
     required: [true, 'Email is required'],
-    unique: true, // This automatically creates an index - no need for separate index creation
+    unique: true,
     lowercase: true,
     trim: true,
     match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email'],
@@ -37,7 +36,7 @@ const userSchema = new Schema<IUserDocument>({
     type: String,
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters'],
-    select: false, // Don't include password in queries by default
+    select: false,
   },
   firstName: {
     type: String,
@@ -102,9 +101,20 @@ const userSchema = new Schema<IUserDocument>({
     select: false,
   },
   preferences: {
+    // ✅ FIXED: Changed notifications from Boolean to nested object
     notifications: {
-      type: Boolean,
-      default: true,
+      email: {
+        type: Boolean,
+        default: true,
+      },
+      push: {
+        type: Boolean,
+        default: true,
+      },
+      sms: {
+        type: Boolean,
+        default: false,
+      },
     },
     theme: {
       type: String,
@@ -114,6 +124,10 @@ const userSchema = new Schema<IUserDocument>({
     language: {
       type: String,
       default: 'en',
+    },
+    timezone: {
+      type: String,
+      default: 'UTC',
     },
   },
   metadata: {
@@ -136,20 +150,16 @@ const userSchema = new Schema<IUserDocument>({
   toObject: { virtuals: true },
 })
 
-// FIXED: Only create additional indexes that are actually needed
-// Remove any duplicate index creation - unique: true already creates the email index
-
-// Only create indexes for fields that will be queried frequently
-// and don't already have indexes from unique: true or other constraints
-userSchema.index({ role: 1 }) // For role-based queries
-userSchema.index({ isActive: 1 }) // For active user queries
-userSchema.index({ createdAt: -1 }) // For chronological sorting
-userSchema.index({ lastLogin: -1 }) // For login activity queries
-userSchema.index({ isEmailVerified: 1 }) // For verification queries
+// Indexes for efficient queries
+userSchema.index({ role: 1 })
+userSchema.index({ isActive: 1 })
+userSchema.index({ createdAt: -1 })
+userSchema.index({ lastLogin: -1 })
+userSchema.index({ isEmailVerified: 1 })
 
 // Compound indexes for common query patterns
-userSchema.index({ isActive: 1, role: 1 }) // For active users by role
-userSchema.index({ isEmailVerified: 1, isActive: 1 }) // For verified active users
+userSchema.index({ isActive: 1, role: 1 })
+userSchema.index({ isEmailVerified: 1, isActive: 1 })
 
 // Virtual for fullName
 userSchema.virtual('fullName').get(function() {
@@ -239,19 +249,16 @@ userSchema.statics.createUser = async function(userData: Partial<User>) {
   return user.save()
 }
 
-// FIXED: Safe model creation that handles both Edge Runtime and regular Node.js
+// Safe model creation that handles both Edge Runtime and regular Node.js
 function createUserModel(): IUserModel {
-  // Check if model already exists to prevent re-compilation
   if (mongoose.models && mongoose.models.User) {
     return mongoose.models.User as IUserModel
   }
   
-  // Only create model if we have mongoose.model function (Node.js runtime)
   if (typeof mongoose?.model === 'function') {
     try {
       return mongoose.model<IUserDocument, IUserModel>('User', userSchema)
     } catch (error) {
-      // If model creation fails, check if it already exists
       if (mongoose.models && mongoose.models.User) {
         return mongoose.models.User as IUserModel
       }
@@ -259,7 +266,6 @@ function createUserModel(): IUserModel {
     }
   }
   
-  // Fallback for Edge Runtime or other environments
   return new Proxy({} as IUserModel, {
     get(target, prop) {
       throw new Error(`UserModel.${String(prop)} is not available in this runtime environment. Use API routes instead.`)
@@ -268,6 +274,4 @@ function createUserModel(): IUserModel {
 }
 
 export const UserModel = createUserModel()
-
-// Export the schema for testing or other uses
 export { userSchema }

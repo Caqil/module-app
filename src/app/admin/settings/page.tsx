@@ -231,20 +231,29 @@ export default function SettingsPage() {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
+      setError(null);
+
       const response = await fetch("/api/admin/settings", {
         credentials: "include",
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch settings");
+        throw new Error(`HTTP ${response.status}: Failed to fetch settings`);
       }
 
-      const result: ApiResponse<SystemSettings> = await response.json();
-      if (result.success && result.data) {
-        setSettings(result.data);
+      const result: ApiResponse = await response.json();
+      console.log("API Response:", result); // Debug log
+
+      if (result.success && result.data?.settings) {
+        console.log("Settings data:", result.data.settings); // Debug log
+        setSettings(result.data.settings);
+      } else {
+        console.error("Invalid API response:", result);
+        throw new Error(result.error || "Invalid response format");
       }
     } catch (err) {
-      setError("Failed to load settings");
+      console.error("Fetch settings error:", err);
+      setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
       setIsLoading(false);
     }

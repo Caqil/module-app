@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -38,24 +37,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Redirect root to signin for now
-  if (pathname === '/') {
-    return NextResponse.redirect(new URL('/signin', request.url))
-  }
-
+  // REMOVED: The automatic redirect from '/' to '/signin'
+  // Let the client-side page.tsx handle the routing logic
+  
   // Allow all other routes for now (you can add auth protection later)
   return NextResponse.next()
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 }

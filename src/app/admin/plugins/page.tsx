@@ -23,6 +23,7 @@ import {
   IconFilter,
   IconGrid3x3,
   IconList,
+  IconX,
 } from "@tabler/icons-react";
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -59,6 +60,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +74,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Textarea } from "@/components/ui/textarea";
 import { ApiResponse } from "@/types/global";
 import { AppSidebar } from "@/components/admin/admin-sidebar";
 import { AdminHeader } from "@/components/admin/admin-header";
@@ -103,6 +106,10 @@ interface Plugin {
       title: string;
       size: string;
     }>;
+    settings?: {
+      schema: Record<string, any>;
+      defaults: Record<string, any>;
+    };
   };
   config?: Record<string, any>;
   lastActivated?: Date;
@@ -118,6 +125,241 @@ const uploadSchema = z.object({
 });
 
 type UploadFormData = z.infer<typeof uploadSchema>;
+
+// Add configuration modal component
+const ConfigurationModal = ({
+  plugin,
+  isOpen,
+  onClose,
+  onSave,
+  isLoading,
+}: {
+  plugin: Plugin;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (config: Record<string, any>) => Promise<void>;
+  isLoading: boolean;
+}) => {
+  const [config, setConfig] = React.useState<Record<string, any>>(
+    plugin.config || plugin.manifest.settings?.defaults || {}
+  );
+
+  const handleSave = async () => {
+    await onSave(config);
+  };
+
+  const renderConfigField = (key: string, value: any, schemaField?: any) => {
+    const currentValue = config[key] ?? value;
+
+    // Determine field type from schema or value
+    const fieldType = schemaField?.type || typeof value;
+    const fieldDescription = schemaField?.description;
+    const fieldLabel =
+      schemaField?.title || key.charAt(0).toUpperCase() + key.slice(1);
+
+    switch (fieldType) {
+      case "boolean":
+        return (
+          <div key={key} className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor={key}>{fieldLabel}</Label>
+                {fieldDescription && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {fieldDescription}
+                  </p>
+                )}
+              </div>
+              <Switch
+                id={key}
+                checked={currentValue}
+                onCheckedChange={(checked) =>
+                  setConfig({ ...config, [key]: checked })
+                }
+              />
+            </div>
+          </div>
+        );
+
+      case "number":
+        return (
+          <div key={key} className="space-y-2">
+            <Label htmlFor={key}>{fieldLabel}</Label>
+            {fieldDescription && (
+              <p className="text-sm text-muted-foreground">
+                {fieldDescription}
+              </p>
+            )}
+            <Input
+              id={key}
+              type="number"
+              value={currentValue}
+              onChange={(e) =>
+                setConfig({ ...config, [key]: Number(e.target.value) })
+              }
+            />
+          </div>
+        );
+
+      case "object":
+        if (schemaField?.enum) {
+          return (
+            <div key={key} className="space-y-2">
+              <Label htmlFor={key}>{fieldLabel}</Label>
+              {fieldDescription && (
+                <p className="text-sm text-muted-foreground">
+                  {fieldDescription}
+                </p>
+              )}
+              <Select
+                value={currentValue}
+                onValueChange={(value) =>
+                  setConfig({ ...config, [key]: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemaField.enum.map((option: string) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        // For complex objects, show as JSON
+        return (
+          <div key={key} className="space-y-2">
+            <Label htmlFor={key}>{fieldLabel}</Label>
+            {fieldDescription && (
+              <p className="text-sm text-muted-foreground">
+                {fieldDescription}
+              </p>
+            )}
+            <Textarea
+              id={key}
+              value={JSON.stringify(currentValue, null, 2)}
+              onChange={(e) => {
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  setConfig({ ...config, [key]: parsed });
+                } catch {
+                  // Invalid JSON, don't update
+                }
+              }}
+              rows={4}
+            />
+          </div>
+        );
+
+      default: // string or text
+        const isLongText =
+          schemaField?.format === "textarea" ||
+          (typeof currentValue === "string" && currentValue.length > 100);
+
+        return (
+          <div key={key} className="space-y-2">
+            <Label htmlFor={key}>{fieldLabel}</Label>
+            {fieldDescription && (
+              <p className="text-sm text-muted-foreground">
+                {fieldDescription}
+              </p>
+            )}
+            {isLongText ? (
+              <Textarea
+                id={key}
+                value={currentValue}
+                onChange={(e) =>
+                  setConfig({ ...config, [key]: e.target.value })
+                }
+                rows={3}
+              />
+            ) : (
+              <Input
+                id={key}
+                value={currentValue}
+                onChange={(e) =>
+                  setConfig({ ...config, [key]: e.target.value })
+                }
+              />
+            )}
+          </div>
+        );
+    }
+  };
+
+  const schema = plugin.manifest.settings?.schema || {};
+  const defaults = plugin.manifest.settings?.defaults || {};
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <IconSettings className="w-5 h-5" />
+            Configure {plugin.name}
+          </DialogTitle>
+          <DialogDescription>
+            Adjust the plugin settings below. Changes will be applied
+            immediately.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {Object.keys(defaults).length === 0 &&
+          Object.keys(schema).length === 0 ? (
+            <div className="text-center py-8">
+              <IconSettings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">
+                No Configuration Options
+              </h3>
+              <p className="text-muted-foreground">
+                This plugin doesn't have any configurable settings.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Render schema-defined fields first */}
+              {Object.entries(schema).map(([key, schemaField]) =>
+                renderConfigField(key, defaults[key], schemaField)
+              )}
+
+              {/* Render default fields that aren't in schema */}
+              {Object.entries(defaults)
+                .filter(([key]) => !schema[key])
+                .map(([key, value]) => renderConfigField(key, value))}
+
+              {/* Render current config fields that aren't in defaults or schema */}
+              {Object.entries(config)
+                .filter(([key]) => !defaults[key] && !schema[key])
+                .map(([key, value]) => renderConfigField(key, value))}
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <IconLoader className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Configuration"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const getPermissionIcon = (permission: string) => {
   if (permission.includes("database")) return IconDatabase;
@@ -234,6 +476,8 @@ export default function PluginsPage() {
         setUploadOpen(false);
         uploadForm.reset();
         fetchPlugins();
+        // Notify sidebar of plugin state change
+        window.dispatchEvent(new CustomEvent("pluginStateChanged"));
       } else {
         setError(result.error || "Upload failed");
       }
@@ -264,12 +508,56 @@ export default function PluginsPage() {
 
       if (result.success) {
         fetchPlugins();
+        // Notify sidebar of plugin state change
+        window.dispatchEvent(new CustomEvent("pluginStateChanged"));
       } else {
         setError(result.error || `${action} failed`);
       }
     } catch (err) {
       setError("Action failed");
       console.error("Plugin action error:", err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConfigure = (plugin: Plugin) => {
+    setSelectedPlugin(plugin);
+    setConfigOpen(true);
+  };
+
+  const handleSaveConfiguration = async (config: Record<string, any>) => {
+    if (!selectedPlugin) return;
+
+    try {
+      setActionLoading("configure");
+      const response = await fetch(
+        `/api/admin/plugins/${selectedPlugin.pluginId}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "configure",
+            config,
+          }),
+        }
+      );
+
+      const result: ApiResponse = await response.json();
+
+      if (result.success) {
+        setConfigOpen(false);
+        setSelectedPlugin(null);
+        fetchPlugins();
+        // Notify sidebar of plugin state change
+        window.dispatchEvent(new CustomEvent("pluginStateChanged"));
+      } else {
+        setError(result.error || "Configuration failed");
+      }
+    } catch (err) {
+      setError("Configuration failed");
+      console.error("Plugin configure error:", err);
     } finally {
       setActionLoading(null);
     }
@@ -289,6 +577,8 @@ export default function PluginsPage() {
 
       if (result.success) {
         fetchPlugins();
+        // Notify sidebar of plugin state change
+        window.dispatchEvent(new CustomEvent("pluginStateChanged"));
       } else {
         setError(result.error || "Uninstall failed");
       }
@@ -352,7 +642,7 @@ export default function PluginsPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSelectedPlugin(plugin)}>
+                <DropdownMenuItem onClick={() => handleConfigure(plugin)}>
                   <IconSettings className="w-4 h-4 mr-2" />
                   Configure
                 </DropdownMenuItem>
@@ -417,310 +707,281 @@ export default function PluginsPage() {
                 </Badge>
               )}
             </div>
-            {plugin.manifest.permissions.length > 0 && (
-              <div>
-                <span className="text-sm font-medium">Permissions</span>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {plugin.manifest.permissions.slice(0, 3).map((permission) => (
-                    <Badge
-                      key={permission}
-                      variant={getPermissionVariant(permission)}
-                      className="text-xs"
-                    >
-                      {permission.split(":")[0]}
-                    </Badge>
-                  ))}
-                  {plugin.manifest.permissions.length > 3 && (
-                    <Badge variant="outline" className="text-xs">
-                      +{plugin.manifest.permissions.length - 3}
-                    </Badge>
-                  )}
+
+            {plugin.manifest.permissions &&
+              plugin.manifest.permissions.length > 0 && (
+                <div>
+                  <span className="text-sm font-medium mb-2 block">
+                    Permissions
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {plugin.manifest.permissions
+                      .slice(0, 3)
+                      .map((permission) => (
+                        <Badge
+                          key={permission}
+                          variant={getPermissionVariant(permission) as any}
+                          className="text-xs"
+                        >
+                          {permission.split(":")[1] || permission}
+                        </Badge>
+                      ))}
+                    {plugin.manifest.permissions.length > 3 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{plugin.manifest.permissions.length - 3}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         </CardContent>
-        <CardFooter className="pt-0">
-          <div className="text-xs text-muted-foreground">
-            By {plugin.manifest.author.name} • Installed{" "}
-            {new Date(plugin.createdAt).toLocaleDateString()}
-          </div>
-        </CardFooter>
       </Card>
     );
   };
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar variant="inset" />
+    <SidebarProvider>
+      <AppSidebar />
       <SidebarInset>
         <AdminHeader />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
-            {/* Header Stats */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Total Plugins
-                  </CardTitle>
-                  <IconPuzzle className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{totalPlugins}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Active Plugins
-                  </CardTitle>
-                  <IconCircleCheckFilled className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{activePlugins}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {totalPlugins > 0
-                      ? Math.round((activePlugins / totalPlugins) * 100)
-                      : 0}
-                    % activation rate
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Categories
-                  </CardTitle>
-                  <IconFilter className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{categories.length}</div>
-                  <p className="text-xs text-muted-foreground">
-                    Plugin categories
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    System Health
-                  </CardTitle>
-                  <IconShield className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">Healthy</div>
-                  <p className="text-xs text-muted-foreground">
-                    All plugins stable
-                  </p>
-                </CardContent>
-              </Card>
+        <div className="flex-1 space-y-4 p-4 pt-6">
+          {error && (
+            <div className="bg-destructive/15 text-destructive px-4 py-3 rounded-md flex items-center justify-between">
+              <span>{error}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setError(null)}
+              >
+                <IconX className="w-4 h-4" />
+              </Button>
             </div>
+          )}
 
-            {/* Page Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">Plugins</h1>
-                <p className="text-muted-foreground">
-                  Manage and configure system plugins
+          {/* Stats Cards */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Plugins
+                </CardTitle>
+                <IconPuzzle className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalPlugins}</div>
+                <p className="text-xs text-muted-foreground">
+                  Installed plugins
                 </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <ToggleGroup
-                  type="single"
-                  value={viewMode}
-                  onValueChange={(value: "grid" | "list") =>
-                    value && setViewMode(value)
-                  }
-                >
-                  <ToggleGroupItem value="grid" aria-label="Grid view">
-                    <IconGrid3x3 className="h-4 w-4" />
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="list" aria-label="List view">
-                    <IconList className="h-4 w-4" />
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <IconPlus className="w-4 h-4 mr-2" />
-                      Install Plugin
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Install New Plugin</DialogTitle>
-                      <DialogDescription>
-                        Upload a plugin ZIP file to install it on your system.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <Form {...uploadForm}>
-                      <form
-                        onSubmit={uploadForm.handleSubmit(handleUpload)}
-                        className="space-y-4"
-                      >
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Active Plugins
+                </CardTitle>
+                <IconCircleCheckFilled className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{activePlugins}</div>
+                <p className="text-xs text-muted-foreground">
+                  Currently active
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  System Health
+                </CardTitle>
+                <IconShield className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Healthy</div>
+                <p className="text-xs text-muted-foreground">
+                  All plugins stable
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Page Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Plugins</h1>
+              <p className="text-muted-foreground">
+                Manage and configure system plugins
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ToggleGroup
+                type="single"
+                value={viewMode}
+                onValueChange={(value: "grid" | "list") =>
+                  value && setViewMode(value)
+                }
+              >
+                <ToggleGroupItem value="grid" aria-label="Grid view">
+                  <IconGrid3x3 className="h-4 w-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="list" aria-label="List view">
+                  <IconList className="h-4 w-4" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <IconPlus className="w-4 h-4 mr-2" />
+                    Install Plugin
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Install New Plugin</DialogTitle>
+                    <DialogDescription>
+                      Upload a plugin ZIP file to install it on your system.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <Form {...uploadForm}>
+                    <form
+                      onSubmit={uploadForm.handleSubmit(handleUpload)}
+                      className="space-y-4"
+                    >
+                      <FormField
+                        control={uploadForm.control}
+                        name="file"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Plugin File</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="file"
+                                accept=".zip"
+                                onChange={(e) => field.onChange(e.target.files)}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="grid grid-cols-2 gap-4">
                         <FormField
                           control={uploadForm.control}
-                          name="file"
+                          name="overwrite"
                           render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Plugin File</FormLabel>
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                              <div className="space-y-0.5">
+                                <FormLabel className="text-base">
+                                  Overwrite
+                                </FormLabel>
+                                <div className="text-sm text-muted-foreground">
+                                  Replace if exists
+                                </div>
+                              </div>
                               <FormControl>
-                                <Input
-                                  type="file"
-                                  accept=".zip"
-                                  onChange={(e) =>
-                                    field.onChange(e.target.files)
-                                  }
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
                                 />
                               </FormControl>
-                              <FormMessage />
                             </FormItem>
                           )}
                         />
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={uploadForm.control}
-                            name="overwrite"
-                            render={({ field }) => (
-                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="text-base">
-                                    Overwrite
-                                  </FormLabel>
-                                  <div className="text-sm text-muted-foreground">
-                                    Replace existing plugin
-                                  </div>
+                        <FormField
+                          control={uploadForm.control}
+                          name="activate"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                              <div className="space-y-0.5">
+                                <FormLabel className="text-base">
+                                  Activate
+                                </FormLabel>
+                                <div className="text-sm text-muted-foreground">
+                                  Activate after install
                                 </div>
-                                <FormControl>
-                                  <Switch
-                                    checked={field.value}
-                                    onCheckedChange={field.onChange}
-                                  />
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={uploadForm.control}
-                            name="activate"
-                            render={({ field }) => (
-                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="text-base">
-                                    Activate
-                                  </FormLabel>
-                                  <div className="text-sm text-muted-foreground">
-                                    Activate after install
-                                  </div>
-                                </div>
-                                <FormControl>
-                                  <Switch
-                                    checked={field.value}
-                                    onCheckedChange={field.onChange}
-                                  />
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setUploadOpen(false)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="submit"
-                            disabled={actionLoading === "upload"}
-                          >
-                            {actionLoading === "upload" ? (
-                              <>
-                                <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                                Installing...
-                              </>
-                            ) : (
-                              <>
-                                <IconUpload className="w-4 h-4 mr-2" />
-                                Install Plugin
-                              </>
-                            )}
-                          </Button>
-                        </DialogFooter>
-                      </form>
-                    </Form>
-                  </DialogContent>
-                </Dialog>
-              </div>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setUploadOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={actionLoading === "upload"}
+                        >
+                          {actionLoading === "upload" ? (
+                            <>
+                              <IconLoader className="w-4 h-4 mr-2 animate-spin" />
+                              Installing...
+                            </>
+                          ) : (
+                            <>
+                              <IconUpload className="w-4 h-4 mr-2" />
+                              Install Plugin
+                            </>
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
             </div>
+          </div>
 
-            {/* Search and Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <IconSearch className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search plugins..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Select
-                  value={categoryFilter}
-                  onValueChange={setCategoryFilter}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category.charAt(0).toUpperCase() + category.slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <IconSearch className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search plugins..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8"
+              />
             </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <IconFilter className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            {/* Error Display */}
-            {error && (
-              <Card className="border-destructive">
-                <CardHeader>
-                  <CardTitle className="text-destructive">Error</CardTitle>
-                  <CardDescription>{error}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={fetchPlugins} variant="outline">
-                    Try Again
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Plugins Grid/List */}
+          {/* Plugins Grid/List */}
+          <div>
             {isLoading ? (
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -776,6 +1037,20 @@ export default function PluginsPage() {
             )}
           </div>
         </div>
+
+        {/* Configuration Modal */}
+        {selectedPlugin && (
+          <ConfigurationModal
+            plugin={selectedPlugin}
+            isOpen={configOpen}
+            onClose={() => {
+              setConfigOpen(false);
+              setSelectedPlugin(null);
+            }}
+            onSave={handleSaveConfiguration}
+            isLoading={actionLoading === "configure"}
+          />
+        )}
       </SidebarInset>
     </SidebarProvider>
   );
