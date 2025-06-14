@@ -34,7 +34,7 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
       connectTimeoutMS: DB_CONFIG.CONNECTION_TIMEOUT,
       retryWrites: DB_CONFIG.RETRY_WRITES,
       retryReads: DB_CONFIG.RETRY_READS,
-      bufferCommands: false,
+      //bufferCommands: false,
     })
 
     connection.isConnected = true

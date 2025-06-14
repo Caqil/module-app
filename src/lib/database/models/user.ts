@@ -1,5 +1,3 @@
-// src/lib/database/models/user.ts
-// Completely fixed version that matches User type exactly
 
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import bcrypt from 'bcryptjs'
@@ -30,7 +28,7 @@ const userSchema = new Schema<IUserDocument>({
   email: {
     type: String,
     required: [true, 'Email is required'],
-    unique: true,
+    unique: true, // This automatically creates an index - no need for separate index creation
     lowercase: true,
     trim: true,
     match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email'],
@@ -104,6 +102,10 @@ const userSchema = new Schema<IUserDocument>({
     select: false,
   },
   preferences: {
+    notifications: {
+      type: Boolean,
+      default: true,
+    },
     theme: {
       type: String,
       enum: ['light', 'dark', 'system'],
@@ -112,24 +114,6 @@ const userSchema = new Schema<IUserDocument>({
     language: {
       type: String,
       default: 'en',
-    },
-    timezone: {
-      type: String,
-      default: 'UTC',
-    },
-    notifications: {
-      email: {
-        type: Boolean,
-        default: true,
-      },
-      push: {
-        type: Boolean,
-        default: true,
-      },
-      sms: {
-        type: Boolean,
-        default: false,
-      },
     },
   },
   metadata: {
@@ -142,7 +126,6 @@ const userSchema = new Schema<IUserDocument>({
     virtuals: true,
     transform: function(doc, ret) {
       delete ret.password
-      delete ret.__v
       delete ret.resetPasswordToken
       delete ret.resetPasswordExpires
       delete ret.emailVerificationToken
@@ -153,13 +136,22 @@ const userSchema = new Schema<IUserDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes
-userSchema.index({ email: 1 })
-userSchema.index({ role: 1 })
-userSchema.index({ isActive: 1 })
-userSchema.index({ createdAt: -1 })
+// FIXED: Only create additional indexes that are actually needed
+// Remove any duplicate index creation - unique: true already creates the email index
 
-// Virtual for full name
+// Only create indexes for fields that will be queried frequently
+// and don't already have indexes from unique: true or other constraints
+userSchema.index({ role: 1 }) // For role-based queries
+userSchema.index({ isActive: 1 }) // For active user queries
+userSchema.index({ createdAt: -1 }) // For chronological sorting
+userSchema.index({ lastLogin: -1 }) // For login activity queries
+userSchema.index({ isEmailVerified: 1 }) // For verification queries
+
+// Compound indexes for common query patterns
+userSchema.index({ isActive: 1, role: 1 }) // For active users by role
+userSchema.index({ isEmailVerified: 1, isActive: 1 }) // For verified active users
+
+// Virtual for fullName
 userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`
 })
@@ -169,7 +161,8 @@ userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next()
   
   try {
-    this.password = await bcrypt.hash(this.password, AUTH_CONFIG.BCRYPT_ROUNDS)
+    const salt = await bcrypt.genSalt(12)
+    this.password = await bcrypt.hash(this.password, salt)
     next()
   } catch (error) {
     next(error as Error)
@@ -178,27 +171,27 @@ userSchema.pre('save', async function(next) {
 
 // Instance methods
 userSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
-  try {
-    return await bcrypt.compare(candidatePassword, this.password)
-  } catch (error) {
-    throw new Error('Password comparison failed')
-  }
+  return bcrypt.compare(candidatePassword, this.password)
 }
 
 userSchema.methods.generateResetToken = function(): string {
-  const crypto = require('crypto')
-  const token = crypto.randomBytes(32).toString('hex')
-  this.resetPasswordToken = token
-  this.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
-  return token
+  const resetToken = Math.random().toString(36).substring(2, 15) + 
+                    Math.random().toString(36).substring(2, 15)
+  
+  this.resetPasswordToken = resetToken
+  this.resetPasswordExpires = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+  
+  return resetToken
 }
 
 userSchema.methods.generateEmailVerificationToken = function(): string {
-  const crypto = require('crypto')
-  const token = crypto.randomBytes(32).toString('hex')
-  this.emailVerificationToken = token
+  const verificationToken = Math.random().toString(36).substring(2, 15) + 
+                           Math.random().toString(36).substring(2, 15)
+  
+  this.emailVerificationToken = verificationToken
   this.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-  return token
+  
+  return verificationToken
 }
 
 userSchema.methods.isAccountLocked = function(): boolean {
@@ -246,24 +239,35 @@ userSchema.statics.createUser = async function(userData: Partial<User>) {
   return user.save()
 }
 
-// Safe model creation that handles Edge Runtime
+// FIXED: Safe model creation that handles both Edge Runtime and regular Node.js
 function createUserModel(): IUserModel {
-  // Check if we're in an environment where mongoose.models exists
-  if (typeof mongoose?.models === 'object' && mongoose.models.User) {
+  // Check if model already exists to prevent re-compilation
+  if (mongoose.models && mongoose.models.User) {
     return mongoose.models.User as IUserModel
   }
   
-  // Create new model if possible (Node.js runtime)
+  // Only create model if we have mongoose.model function (Node.js runtime)
   if (typeof mongoose?.model === 'function') {
-    return mongoose.model<IUserDocument, IUserModel>('User', userSchema)
+    try {
+      return mongoose.model<IUserDocument, IUserModel>('User', userSchema)
+    } catch (error) {
+      // If model creation fails, check if it already exists
+      if (mongoose.models && mongoose.models.User) {
+        return mongoose.models.User as IUserModel
+      }
+      throw error
+    }
   }
   
-  // If we can't create the model (Edge Runtime), return a proxy that throws meaningful errors
+  // Fallback for Edge Runtime or other environments
   return new Proxy({} as IUserModel, {
     get(target, prop) {
-      throw new Error(`UserModel is not available in Edge Runtime. Use API routes instead.`)
+      throw new Error(`UserModel.${String(prop)} is not available in this runtime environment. Use API routes instead.`)
     }
   })
 }
 
 export const UserModel = createUserModel()
+
+// Export the schema for testing or other uses
+export { userSchema }

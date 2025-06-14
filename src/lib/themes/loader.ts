@@ -1,4 +1,4 @@
-
+// Theme loader - Fixed dynamicImport function
 import path from 'path'
 import fs from 'fs/promises'
 import { pathToFileURL } from 'url'
@@ -109,9 +109,20 @@ export class ThemeLoader {
     if (validate) {
       const validation = themeManifestSchema.safeParse(manifestData)
       if (!validation.success) {
-        throw new Error(`Invalid manifest: ${validation.error.issues.map(i => i.message).join(', ')}`)
+        throw new Error(`Invalid manifest: ${validation.error.message}`)
       }
+      // The transform in the schema ensures proper structure
       return validation.data as ThemeManifest
+    }
+    
+    // Normalize layouts when validation is skipped
+    if (manifestData.layouts && typeof manifestData.layouts === 'object') {
+      manifestData.layouts = {
+        default: manifestData.layouts.default || 'layouts/default.tsx',
+        admin: manifestData.layouts.admin || 'layouts/admin.tsx', 
+        auth: manifestData.layouts.auth || 'layouts/auth.tsx',
+        ...manifestData.layouts
+      }
     }
     
     return manifestData as ThemeManifest
@@ -119,7 +130,7 @@ export class ThemeLoader {
     if (error instanceof SyntaxError) {
       throw new Error('Invalid JSON in theme manifest')
     }
-    throw new Error(`Failed to load manifest: ${getErrorMessage(error)}`)
+    throw error
   }
 }
 
@@ -132,74 +143,74 @@ export class ThemeLoader {
       scripts: new Map(),
     }
 
-    if (manifest.assets) {
+    try {
       // Load images
-      if (manifest.assets.images) {
+      if (manifest.assets?.images) {
         for (const imagePath of manifest.assets.images) {
-          const fullPath = path.join(themePath, imagePath)
           try {
+            const fullPath = path.join(themePath, imagePath)
             await fs.access(fullPath)
-            const publicPath = `/themes/${manifest.id}/${imagePath}`
-            assets.images.set(path.basename(imagePath), publicPath)
+            // Store the path relative to theme directory
+            assets.images.set(path.basename(imagePath), imagePath)
           } catch {
-            // Asset not found, skip silently
+            // Image not found, skip silently
           }
         }
       }
 
       // Load fonts
-      if (manifest.assets.fonts) {
+      if (manifest.assets?.fonts) {
         for (const fontPath of manifest.assets.fonts) {
-          const fullPath = path.join(themePath, fontPath)
           try {
+            const fullPath = path.join(themePath, fontPath)
             await fs.access(fullPath)
-            const publicPath = `/themes/${manifest.id}/${fontPath}`
-            assets.fonts.set(path.basename(fontPath), publicPath)
+            assets.fonts.set(path.basename(fontPath), fontPath)
           } catch {
-            // Asset not found, skip silently
+            // Font not found, skip silently
           }
         }
       }
 
       // Load icons
-      if (manifest.assets.icons) {
+      if (manifest.assets?.icons) {
         for (const iconPath of manifest.assets.icons) {
-          const fullPath = path.join(themePath, iconPath)
           try {
+            const fullPath = path.join(themePath, iconPath)
             await fs.access(fullPath)
-            const publicPath = `/themes/${manifest.id}/${iconPath}`
-            assets.icons.set(path.basename(iconPath), publicPath)
+            assets.icons.set(path.basename(iconPath), iconPath)
           } catch {
-            // Asset not found, skip silently
+            // Icon not found, skip silently
           }
         }
       }
-    }
 
-    // Load styles
-    if (manifest.styles) {
-      for (const stylePath of manifest.styles) {
-        const fullPath = path.join(themePath, stylePath)
-        try {
-          const content = await fs.readFile(fullPath, 'utf-8')
-          assets.styles.set(path.basename(stylePath), content)
-        } catch {
-          // Style not found, skip silently
+      // Load styles
+      if (manifest.styles) {
+        for (const stylePath of manifest.styles) {
+          const fullPath = path.join(themePath, stylePath)
+          try {
+            const content = await fs.readFile(fullPath, 'utf-8')
+            assets.styles.set(path.basename(stylePath), content)
+          } catch {
+            // Style not found, skip silently
+          }
         }
       }
-    }
 
-    // Load scripts
-    if (manifest.scripts) {
-      for (const scriptPath of manifest.scripts) {
-        const fullPath = path.join(themePath, scriptPath)
-        try {
-          const content = await fs.readFile(fullPath, 'utf-8')
-          assets.scripts.set(path.basename(scriptPath), content)
-        } catch {
-          // Script not found, skip silently
+      // Load scripts
+      if (manifest.scripts) {
+        for (const scriptPath of manifest.scripts) {
+          const fullPath = path.join(themePath, scriptPath)
+          try {
+            const content = await fs.readFile(fullPath, 'utf-8')
+            assets.scripts.set(path.basename(scriptPath), content)
+          } catch {
+            // Script not found, skip silently
+          }
         }
       }
+    } catch (error) {
+      // Non-critical error, return partial assets
     }
 
     return assets
@@ -277,26 +288,59 @@ export class ThemeLoader {
     }
   }
 
+  // Fixed dynamicImport function with webpack ignore comments
   private async dynamicImport(filePath: string): Promise<any> {
     const absolutePath = path.resolve(filePath)
     
     if (typeof window !== 'undefined') {
       // Browser environment - use dynamic import with file URL
       const fileUrl = pathToFileURL(absolutePath).href
-      return import(fileUrl)
+      // Tell webpack to ignore this dynamic import
+      return import(/* webpackIgnore: true */ fileUrl)
     } else {
       // Node.js environment
       // Clear require cache to ensure fresh import
-      delete require.cache[absolutePath]
+      if (require.cache[absolutePath]) {
+        delete require.cache[absolutePath]
+      }
       
       // Handle different file extensions
       const ext = path.extname(absolutePath).toLowerCase()
       
       if (ext === '.mjs' || ext === '.js') {
-        return import(pathToFileURL(absolutePath).href)
+        const fileUrl = pathToFileURL(absolutePath).href
+        // Tell webpack to ignore this dynamic import
+        return import(/* webpackIgnore: true */ fileUrl)
       } else {
-        // For .ts files or other extensions, use require
-        return require(absolutePath)
+        // For .ts files or other extensions, use a safer require approach
+        try {
+          // Use Function constructor to avoid webpack static analysis
+          const dynamicRequire = new Function('modulePath', 'return require(modulePath)')
+          return dynamicRequire(absolutePath)
+        } catch (error) {
+          // Fallback to regular require if Function constructor fails
+          // This should be safe since we're in a server environment
+          const Module = require('module')
+          
+          try {
+            return require(absolutePath)
+          } catch (requireError) {
+            // If all else fails, try loading as text and evaluating
+            try {
+              const content = await fs.readFile(absolutePath, 'utf-8')
+              const moduleExports = {}
+              const module = { exports: moduleExports }
+              
+              // Simple evaluation for basic modules
+              const func = new Function('module', 'exports', 'require', '__filename', '__dirname', content)
+              func(module, moduleExports, require, absolutePath, path.dirname(absolutePath))
+              
+              return module.exports
+            } catch (evalError) {
+              throw new Error(`Failed to load module: ${getErrorMessage(evalError)}`)
+            }
+          }
+        }
       }
     }
   }
@@ -337,25 +381,63 @@ export class ThemeLoader {
         try {
           await fs.access(fullPath)
         } catch {
-          warnings.push(`Layout file not found: ${layoutPath} (${layoutName})`)
+          warnings.push(`Layout component not found: ${layoutPath} (${layoutName})`)
+        }
+      }
+    }
+
+    // Validate page components
+    if (manifest.pages) {
+      for (const page of manifest.pages) {
+        const componentPath = path.join(themePath, page.component)
+        try {
+          await fs.access(componentPath)
+        } catch {
+          warnings.push(`Page component not found: ${page.component}`)
+        }
+      }
+    }
+
+    // Validate custom components
+    if (manifest.components) {
+      for (const comp of manifest.components) {
+        const componentPath = path.join(themePath, comp.component)
+        try {
+          await fs.access(componentPath)
+        } catch {
+          warnings.push(`Component not found: ${comp.component}`)
         }
       }
     }
 
     // Validate assets
     if (manifest.assets) {
-      const allAssets = [
-        ...(manifest.assets.images || []),
-        ...(manifest.assets.fonts || []),
-        ...(manifest.assets.icons || []),
-      ]
+      const { images = [], fonts = [], icons = [] } = manifest.assets
 
-      for (const assetPath of allAssets) {
-        const fullPath = path.join(themePath, assetPath)
+      for (const imagePath of images) {
+        const fullPath = path.join(themePath, imagePath)
         try {
           await fs.access(fullPath)
         } catch {
-          warnings.push(`Asset file not found: ${assetPath}`)
+          warnings.push(`Image asset not found: ${imagePath}`)
+        }
+      }
+
+      for (const fontPath of fonts) {
+        const fullPath = path.join(themePath, fontPath)
+        try {
+          await fs.access(fullPath)
+        } catch {
+          warnings.push(`Font asset not found: ${fontPath}`)
+        }
+      }
+
+      for (const iconPath of icons) {
+        const fullPath = path.join(themePath, iconPath)
+        try {
+          await fs.access(fullPath)
+        } catch {
+          warnings.push(`Icon asset not found: ${iconPath}`)
         }
       }
     }
@@ -372,11 +454,23 @@ export class ThemeLoader {
       }
     }
 
+    // Validate scripts
+    if (manifest.scripts) {
+      for (const scriptPath of manifest.scripts) {
+        const fullPath = path.join(themePath, scriptPath)
+        try {
+          await fs.access(fullPath)
+        } catch {
+          warnings.push(`Script file not found: ${scriptPath}`)
+        }
+      }
+    }
+
     return {
       isValid: errors.length === 0,
       errors,
       warnings,
-      manifest,
+      manifest
     }
   }
 
@@ -394,14 +488,10 @@ export class ThemeLoader {
     return this.cache.get(themeId)
   }
 
-  getCacheStats() {
-    return {
-      cached: this.cache.size,
-      loading: this.loadingPromises.size,
-      themes: Array.from(this.cache.keys()),
-    }
+  getAllCachedThemes(): Map<string, LoadedTheme> {
+    return new Map(this.cache)
   }
 }
 
-// Singleton instance
+// Export singleton instance
 export const themeLoader = new ThemeLoader()
