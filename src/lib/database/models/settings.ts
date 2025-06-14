@@ -1,4 +1,5 @@
-// Settings model
+// src/lib/database/models/settings.ts
+// Fixed version that handles undefined mongoose.models (Edge Runtime compatible)
 
 import { SystemSettings } from '@/types/global'
 import mongoose, { Schema, Document, Model } from 'mongoose'
@@ -119,6 +120,7 @@ const systemSettingsSchema = new Schema<ISystemSettingsDocument>({
 
 // Ensure only one settings document exists
 systemSettingsSchema.index({}, { unique: true })
+
 systemSettingsSchema.statics.getSettings = async function() {
   // Simply find and return, don't auto-create
   return await this.findOne()
@@ -187,5 +189,24 @@ systemSettingsSchema.statics.setSetting = async function(key: keyof SystemSettin
   return settings
 }
 
-export const SystemSettingsModel = (mongoose.models.SystemSettings as ISystemSettingsModel) || 
-  mongoose.model<ISystemSettingsDocument, ISystemSettingsModel>('SystemSettings', systemSettingsSchema)
+// Safe model creation that handles Edge Runtime
+function createSystemSettingsModel(): ISystemSettingsModel {
+  // Check if we're in an environment where mongoose.models exists
+  if (typeof mongoose?.models === 'object' && mongoose.models.SystemSettings) {
+    return mongoose.models.SystemSettings as ISystemSettingsModel
+  }
+  
+  // Create new model if possible (Node.js runtime)
+  if (typeof mongoose?.model === 'function') {
+    return mongoose.model<ISystemSettingsDocument, ISystemSettingsModel>('SystemSettings', systemSettingsSchema)
+  }
+  
+  // If we can't create the model (Edge Runtime), return a proxy that throws meaningful errors
+  return new Proxy({} as ISystemSettingsModel, {
+    get(target, prop) {
+      throw new Error(`SystemSettingsModel is not available in Edge Runtime. Use API routes instead.`)
+    }
+  })
+}
+
+export const SystemSettingsModel = createSystemSettingsModel()

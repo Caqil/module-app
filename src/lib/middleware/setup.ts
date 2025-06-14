@@ -1,7 +1,5 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { connectToDatabase } from '@/lib/database/mongodb'
-import { SystemSettingsModel } from '@/lib/database/models/settings'
 
 interface SetupStatus {
   isComplete: boolean
@@ -9,7 +7,7 @@ interface SetupStatus {
   error?: string
 }
 
-// Cache setup status to avoid database calls on every request
+// Cache setup status to avoid API calls on every request
 let setupStatusCache: {
   status: SetupStatus | null
   timestamp: number
@@ -17,7 +15,7 @@ let setupStatusCache: {
 } = {
   status: null,
   timestamp: 0,
-  ttl: 60000, // 1 minute cache
+  ttl: 30000, // 30 seconds cache (shorter for development)
 }
 
 // Routes that are allowed during setup
@@ -59,33 +57,43 @@ async function getSetupStatus(): Promise<SetupStatus> {
   }
 
   try {
-    // First check if we can even connect to database
-    const canConnect = await checkDatabaseConnection()
-    if (!canConnect) {
+    // Check if MongoDB URI is configured
+    if (!process.env.MONGODB_URI) {
       return {
         isComplete: false,
-        error: 'Database connection not available',
+        error: 'MongoDB connection not configured',
       }
     }
 
-    // Connect to database and check setup status
-    await connectToDatabase()
-    
-    // Check if there's an actual settings document (not just default)
-    const settings = await SystemSettingsModel.findOne()
+    // Make internal API call to check setup status
+    // This avoids using database models in middleware
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+    const response = await fetch(`${baseUrl}/api/setup`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Setup-Middleware',
+      },
+    })
+
+    if (!response.ok) {
+      return {
+        isComplete: false,
+        error: 'Setup API not available',
+      }
+    }
+
+    const data = await response.json()
     
     let status: SetupStatus
-    if (!settings) {
-      // No settings document exists = setup not complete
+    if (data.success && data.data) {
+      status = {
+        isComplete: data.data.isSetupComplete || false,
+        siteName: data.data.siteName || 'Modular App',
+      }
+    } else {
       status = {
         isComplete: false,
         siteName: 'Modular App',
-      }
-    } else {
-      // Settings document exists, check if setup is complete
-      status = {
-        isComplete: settings.isSetupComplete,
-        siteName: settings.siteName,
       }
     }
 
@@ -105,27 +113,6 @@ async function getSetupStatus(): Promise<SetupStatus> {
       isComplete: false,
       error: 'Failed to check setup status',
     }
-  }
-}
-
-// Helper function to check database without creating data
-async function checkDatabaseConnection(): Promise<boolean> {
-  try {
-    const mongoUri = process.env.MONGODB_URI
-    if (!mongoUri) {
-      return false
-    }
-    
-    const mongoose = require('mongoose')
-    const testConnection = await mongoose.createConnection(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
-    })
-    
-    await testConnection.close()
-    return true
-  } catch (error) {
-    return false
   }
 }
 
@@ -214,7 +201,7 @@ export async function setupMiddleware(request: NextRequest): Promise<NextRespons
 
     // Setup is complete - handle special cases
     if (setupStatus.isComplete) {
-      // Redirect from setup page to dashboard if setup is already complete
+      // Redirect from setup page to signin if setup is already complete
       if (pathname === '/setup') {
         return NextResponse.redirect(new URL('/signin?message=Setup already completed', request.url))
       }
@@ -254,25 +241,6 @@ export function clearSetupStatusCache(): void {
 export async function refreshSetupStatus(): Promise<SetupStatus> {
   clearSetupStatusCache()
   return getSetupStatus()
-}
-
-// Utility to check setup status without caching
-export async function checkSetupStatusDirect(): Promise<SetupStatus> {
-  try {
-    await connectToDatabase()
-    const settings = await SystemSettingsModel.getSettings()
-    
-    return {
-      isComplete: settings.isSetupComplete,
-      siteName: settings.siteName,
-    }
-  } catch (error) {
-    console.error('Direct setup status check failed:', error)
-    return {
-      isComplete: false,
-      error: 'Failed to check setup status',
-    }
-  }
 }
 
 // Middleware configuration helper

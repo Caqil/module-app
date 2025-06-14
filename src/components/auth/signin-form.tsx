@@ -26,6 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { loginSchema } from "@/lib/validations";
 import { ApiResponse } from "@/types/global";
@@ -51,6 +52,8 @@ export function SignInForm() {
       setIsLoading(true);
       setError(null);
 
+      console.log("🔐 [SIGNIN FORM] Starting login for:", data.email);
+
       const response = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -60,24 +63,44 @@ export function SignInForm() {
 
       const result: ApiResponse = await response.json();
 
+      console.log("📤 [SIGNIN FORM] API Response:", {
+        ok: response.ok,
+        status: response.status,
+        success: result.success,
+        hasUser: !!result.data?.user,
+      });
+
       if (!response.ok) {
         setError(result.error || "Login failed");
         return;
       }
 
       if (result.success) {
+        console.log("✅ [SIGNIN FORM] Login successful, redirecting...");
+
+        // Small delay to ensure cookie is set
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
         // Redirect based on user role
         const user = result.data?.user;
+        console.log("👤 [SIGNIN FORM] User role:", user?.role);
+
         if (user?.role === "admin") {
+          console.log("🚀 [SIGNIN FORM] Redirecting to admin dashboard");
           router.push("/admin/dashboard");
         } else {
+          console.log("🚀 [SIGNIN FORM] Redirecting to user dashboard");
           router.push("/dashboard");
         }
+
+        // Force router refresh
         router.refresh();
       }
     } catch (error) {
+      console.error("❌ [SIGNIN FORM] Network error:", error);
       setError("Network error. Please try again.");
     } finally {
+      // This was missing! Always reset loading state
       setIsLoading(false);
     }
   };
@@ -89,7 +112,7 @@ export function SignInForm() {
           Sign In
         </CardTitle>
         <CardDescription className="text-center">
-          Enter your credentials to access your account
+          Enter your email and password to access your account
         </CardDescription>
       </CardHeader>
 
@@ -112,8 +135,9 @@ export function SignInForm() {
                     <Input
                       {...field}
                       type="email"
-                      placeholder="Enter your email"
+                      placeholder="admin@modularapp.com"
                       disabled={isLoading}
+                      autoComplete="email"
                     />
                   </FormControl>
                   <FormMessage />
@@ -134,6 +158,7 @@ export function SignInForm() {
                         type={showPassword ? "text" : "password"}
                         placeholder="Enter your password"
                         disabled={isLoading}
+                        autoComplete="current-password"
                       />
                       <Button
                         type="button"
@@ -148,9 +173,6 @@ export function SignInForm() {
                         ) : (
                           <Eye className="h-4 w-4" />
                         )}
-                        <span className="sr-only">
-                          {showPassword ? "Hide password" : "Show password"}
-                        </span>
                       </Button>
                     </div>
                   </FormControl>
@@ -165,17 +187,15 @@ export function SignInForm() {
               render={({ field }) => (
                 <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                   <FormControl>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={field.value}
-                      onChange={field.onChange}
+                      onCheckedChange={field.onChange}
                       disabled={isLoading}
-                      className="mt-1"
                     />
                   </FormControl>
                   <div className="space-y-1 leading-none">
-                    <FormLabel className="text-sm font-normal cursor-pointer">
-                      Remember me for 30 days
+                    <FormLabel className="text-sm font-normal">
+                      Remember me
                     </FormLabel>
                   </div>
                 </FormItem>
@@ -195,7 +215,7 @@ export function SignInForm() {
               )}
             </Button>
 
-            <div className="text-center text-sm space-y-2">
+            <div className="flex flex-col space-y-2 text-center text-sm">
               <Link
                 href="/forgot-password"
                 className="text-primary hover:underline"
@@ -203,11 +223,8 @@ export function SignInForm() {
                 Forgot your password?
               </Link>
               <div>
-                Don&apos;t have an account?{" "}
-                <Link
-                  href="/signup"
-                  className="text-primary hover:underline font-medium"
-                >
+                Don't have an account?{" "}
+                <Link href="/signup" className="text-primary hover:underline">
                   Sign up
                 </Link>
               </div>

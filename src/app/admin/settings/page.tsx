@@ -4,6 +4,7 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 import {
   IconLoader,
   IconMail,
@@ -18,12 +19,11 @@ import {
   IconEyeOff,
   IconCheck,
   IconAlertCircle,
+  IconUpload,
+  IconCamera,
 } from "@tabler/icons-react";
 
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,55 +53,12 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ApiResponse } from "@/types/global";
 import { AppSidebar } from "@/components/admin/admin-sidebar";
-import { SaveIcon } from "lucide-react";
+import { SaveIcon, Camera, Upload } from "lucide-react";
 import { AdminHeader } from "@/components/admin/admin-header";
-
-interface SystemSettings {
-  site: {
-    siteName: string;
-    siteDescription: string;
-    siteLogo?: string;
-    adminEmail: string;
-  };
-  users: {
-    allowUserRegistration: boolean;
-    requireEmailVerification: boolean;
-    defaultUserRole: string;
-    maxLoginAttempts: number;
-  };
-  email: {
-    smtpHost: string;
-    smtpPort: number;
-    smtpUser: string;
-    smtpPass: string;
-    fromEmail: string;
-    fromName: string;
-  };
-  security: {
-    sessionTimeout: number;
-    passwordMinLength: number;
-    requireStrongPasswords: boolean;
-    enableTwoFactor: boolean;
-  };
-  appearance: {
-    defaultTheme: string;
-    allowThemeSelection: boolean;
-    customCss?: string;
-    customJs?: string;
-  };
-  advanced: {
-    maintenanceMode: boolean;
-    maintenanceMessage: string;
-    debugMode: boolean;
-    logLevel: string;
-    cacheEnabled: boolean;
-    cacheTtl: number;
-  };
-}
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Form schemas
 const siteSettingsSchema = z.object({
@@ -128,7 +85,7 @@ const emailSettingsSchema = z.object({
 });
 
 const securitySettingsSchema = z.object({
-  sessionTimeout: z.number().min(300).max(86400), // 5 minutes to 24 hours
+  sessionTimeout: z.number().min(300).max(86400),
   passwordMinLength: z.number().min(8).max(128),
   requireStrongPasswords: z.boolean(),
   enableTwoFactor: z.boolean(),
@@ -150,6 +107,16 @@ const advancedSettingsSchema = z.object({
   cacheTtl: z.number().min(60).max(86400),
 });
 
+// Types
+type SystemSettings = {
+  site: z.infer<typeof siteSettingsSchema>;
+  users: z.infer<typeof userSettingsSchema>;
+  email: z.infer<typeof emailSettingsSchema>;
+  security: z.infer<typeof securitySettingsSchema>;
+  appearance: z.infer<typeof appearanceSettingsSchema>;
+  advanced: z.infer<typeof advancedSettingsSchema>;
+};
+
 type SiteSettingsFormData = z.infer<typeof siteSettingsSchema>;
 type UserSettingsFormData = z.infer<typeof userSettingsSchema>;
 type EmailSettingsFormData = z.infer<typeof emailSettingsSchema>;
@@ -157,13 +124,61 @@ type SecuritySettingsFormData = z.infer<typeof securitySettingsSchema>;
 type AppearanceSettingsFormData = z.infer<typeof appearanceSettingsSchema>;
 type AdvancedSettingsFormData = z.infer<typeof advancedSettingsSchema>;
 
+// Settings navigation items
+const settingsNavigation = [
+  {
+    id: "general",
+    label: "General Details",
+    icon: IconGlobe,
+    description: "Update your site & personal details here.",
+  },
+  {
+    id: "users",
+    label: "User Management",
+    icon: IconUser,
+    description: "Configure user registration and permissions.",
+  },
+  {
+    id: "security",
+    label: "Security",
+    icon: IconShield,
+    description: "Manage security settings and authentication.",
+  },
+  {
+    id: "email",
+    label: "Email Settings",
+    icon: IconMail,
+    description: "Configure SMTP and email notifications.",
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    icon: IconPalette,
+    description: "Customize themes and visual settings.",
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    icon: IconBell,
+    description: "Configure notification preferences.",
+  },
+  {
+    id: "advanced",
+    label: "Advanced",
+    icon: IconCode,
+    description: "Advanced system settings and debugging.",
+  },
+];
+
 export default function SettingsPage() {
+  const [activeSection, setActiveSection] = React.useState("general");
   const [settings, setSettings] = React.useState<SystemSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const [saveLoading, setSaveLoading] = React.useState<string | null>(null);
   const [showPassword, setShowPassword] = React.useState(false);
+  const [profileImage, setProfileImage] = React.useState<string | null>(null);
 
   // Forms for each settings section
   const siteForm = useForm<SiteSettingsFormData>({
@@ -196,7 +211,6 @@ export default function SettingsPage() {
 
   React.useEffect(() => {
     if (settings) {
-      // Initialize all forms with current settings
       siteForm.reset(settings.site);
       userForm.reset(settings.users);
       emailForm.reset(settings.email);
@@ -204,7 +218,15 @@ export default function SettingsPage() {
       appearanceForm.reset(settings.appearance);
       advancedForm.reset(settings.advanced);
     }
-  }, [settings, siteForm, userForm, emailForm, securityForm, appearanceForm, advancedForm]);
+  }, [
+    settings,
+    siteForm,
+    userForm,
+    emailForm,
+    securityForm,
+    appearanceForm,
+    advancedForm,
+  ]);
 
   const fetchSettings = async () => {
     try {
@@ -213,20 +235,16 @@ export default function SettingsPage() {
         credentials: "include",
       });
 
-      if (response.ok) {
-        const data: ApiResponse = await response.json();
-        if (data.success && data.data?.settings) {
-          setSettings(data.data.settings);
-          setError(null);
-        } else {
-          setError(data.error || "Failed to load settings");
-        }
-      } else {
-        setError("Failed to fetch settings");
+      if (!response.ok) {
+        throw new Error("Failed to fetch settings");
+      }
+
+      const result: ApiResponse<SystemSettings> = await response.json();
+      if (result.success && result.data) {
+        setSettings(result.data);
       }
     } catch (err) {
-      setError("Network error occurred");
-      console.error("Settings fetch error:", err);
+      setError("Failed to load settings");
     } finally {
       setIsLoading(false);
     }
@@ -240,89 +258,137 @@ export default function SettingsPage() {
 
       const response = await fetch("/api/admin/settings", {
         method: "PUT",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ [section]: data }),
       });
 
       const result: ApiResponse = await response.json();
 
-      if (result.success) {
-        setSuccess(`${section.charAt(0).toUpperCase() + section.slice(1)} settings saved successfully`);
-        fetchSettings(); // Refresh settings
-      } else {
-        setError(result.error || "Failed to save settings");
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to save settings");
       }
+
+      setSuccess("Settings saved successfully");
+      await fetchSettings();
     } catch (err) {
-      setError("Network error occurred");
-      console.error("Settings save error:", err);
+      setError(err instanceof Error ? err.message : "Failed to save settings");
     } finally {
       setSaveLoading(null);
     }
   };
 
-  const testEmailConnection = async () => {
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setProfileImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Save handlers for each section
+  const handleSaveSection = async () => {
     try {
-      setSaveLoading("email-test");
-      const formData = emailForm.getValues();
-      
-      const response = await fetch("/api/admin/settings/test-email", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      switch (activeSection) {
+        case "general":
+          const siteData = siteForm.getValues();
+          const siteResult = await siteForm.trigger();
+          if (siteResult) {
+            await saveSettings("site", siteData);
+          }
+          break;
 
-      const result: ApiResponse = await response.json();
+        case "users":
+          const userData = userForm.getValues();
+          const userResult = await userForm.trigger();
+          if (userResult) {
+            await saveSettings("users", userData);
+          }
+          break;
 
-      if (result.success) {
-        setSuccess("Email test successful! Check your inbox.");
-      } else {
-        setError(result.error || "Email test failed");
+        case "security":
+          const securityData = securityForm.getValues();
+          const securityResult = await securityForm.trigger();
+          if (securityResult) {
+            await saveSettings("security", securityData);
+          }
+          break;
+
+        case "email":
+          const emailData = emailForm.getValues();
+          const emailResult = await emailForm.trigger();
+          if (emailResult) {
+            await saveSettings("email", emailData);
+          }
+          break;
+
+        case "appearance":
+          const appearanceData = appearanceForm.getValues();
+          const appearanceResult = await appearanceForm.trigger();
+          if (appearanceResult) {
+            await saveSettings("appearance", appearanceData);
+          }
+          break;
+
+        case "advanced":
+          const advancedData = advancedForm.getValues();
+          const advancedResult = await advancedForm.trigger();
+          if (advancedResult) {
+            await saveSettings("advanced", advancedData);
+          }
+          break;
+
+        default:
+          setError("Unknown settings section");
       }
     } catch (err) {
-      setError("Email test failed");
-      console.error("Email test error:", err);
-    } finally {
-      setSaveLoading(null);
+      setError("Failed to save settings");
     }
   };
+
+  // Cancel handler to reset forms
+  const handleCancel = () => {
+    if (settings) {
+      switch (activeSection) {
+        case "general":
+          siteForm.reset(settings.site);
+          break;
+        case "users":
+          userForm.reset(settings.users);
+          break;
+        case "security":
+          securityForm.reset(settings.security);
+          break;
+        case "email":
+          emailForm.reset(settings.email);
+          break;
+        case "appearance":
+          appearanceForm.reset(settings.appearance);
+          break;
+        case "advanced":
+          advancedForm.reset(settings.advanced);
+          break;
+      }
+    }
+    setError(null);
+    setSuccess(null);
+  };
+
+  const currentSection = settingsNavigation.find(
+    (nav) => nav.id === activeSection
+  );
 
   if (isLoading) {
     return (
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-            "--header-height": "calc(var(--spacing) * 12)",
-          } as React.CSSProperties
-        }
-      >
+      <SidebarProvider>
         <AppSidebar variant="inset" />
         <SidebarInset>
           <AdminHeader />
-          <div className="flex flex-1 flex-col">
-            <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
-              <div className="space-y-4">
-                <div className="h-8 bg-muted rounded w-48 animate-pulse"></div>
-                <div className="h-4 bg-muted rounded w-64 animate-pulse"></div>
-                <div className="grid gap-6 lg:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <Card key={i} className="animate-pulse">
-                      <CardHeader>
-                        <div className="h-4 bg-muted rounded w-32"></div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="h-3 bg-muted rounded"></div>
-                          <div className="h-3 bg-muted rounded w-5/6"></div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center justify-center h-96">
+            <IconLoader className="h-8 w-8 animate-spin" />
           </div>
         </SidebarInset>
       </SidebarProvider>
@@ -341,19 +407,77 @@ export default function SettingsPage() {
       <AppSidebar variant="inset" />
       <SidebarInset>
         <AdminHeader />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
-            {/* Page Header */}
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-              <p className="text-muted-foreground">
-                Configure your application settings and preferences
+        <div className="flex flex-1">
+          {/* Settings Sidebar */}
+          <div className="w-80 border-r bg-muted/30 p-6">
+            <div className="space-y-1">
+              <h2 className="text-2xl font-semibold">Settings</h2>
+              <p className="text-sm text-muted-foreground">
+                Manage your application settings and preferences.
               </p>
+            </div>
+
+            <nav className="mt-8 space-y-1">
+              {settingsNavigation.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveSection(item.id)}
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                    activeSection === item.id
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  )}
+                >
+                  <item.icon className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{item.label}</div>
+                    <div
+                      className={cn(
+                        "text-xs mt-0.5",
+                        activeSection === item.id
+                          ? "text-primary-foreground/80"
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      {item.description}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1 p-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h1 className="text-2xl font-semibold">
+                  {currentSection?.label}
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  {currentSection?.description}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={handleCancel}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveSection} disabled={!!saveLoading}>
+                  {saveLoading ? (
+                    <IconLoader className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <SaveIcon className="h-4 w-4 mr-2" />
+                  )}
+                  Save Changes
+                </Button>
+              </div>
             </div>
 
             {/* Status Messages */}
             {error && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="mb-6">
                 <IconAlertCircle className="h-4 w-4" />
                 <AlertTitle>Error</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
@@ -361,54 +485,21 @@ export default function SettingsPage() {
             )}
 
             {success && (
-              <Alert>
+              <Alert className="mb-6">
                 <IconCheck className="h-4 w-4" />
                 <AlertTitle>Success</AlertTitle>
                 <AlertDescription>{success}</AlertDescription>
               </Alert>
             )}
 
-            {/* Settings Tabs */}
-            <Tabs defaultValue="site" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-6">
-                <TabsTrigger value="site">
-                  <IconGlobe className="w-4 h-4 mr-2" />
-                  Site
-                </TabsTrigger>
-                <TabsTrigger value="users">
-                  <IconUser className="w-4 h-4 mr-2" />
-                  Users
-                </TabsTrigger>
-                <TabsTrigger value="email">
-                  <IconMail className="w-4 h-4 mr-2" />
-                  Email
-                </TabsTrigger>
-                <TabsTrigger value="security">
-                  <IconShield className="w-4 h-4 mr-2" />
-                  Security
-                </TabsTrigger>
-                <TabsTrigger value="appearance">
-                  <IconPalette className="w-4 h-4 mr-2" />
-                  Appearance
-                </TabsTrigger>
-                <TabsTrigger value="advanced">
-                  <IconCode className="w-4 h-4 mr-2" />
-                  Advanced
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Site Settings */}
-              <TabsContent value="site">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Site Information</CardTitle>
-                    <CardDescription>
-                      Configure basic site information and branding
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...siteForm}>
-                      <form onSubmit={siteForm.handleSubmit((data) => saveSettings("site", data))} className="space-y-4">
+            {/* Content Sections */}
+            {activeSection === "general" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column - Form Fields */}
+                <div className="lg:col-span-2 space-y-6">
+                  <Form {...siteForm}>
+                    <form className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
                         <FormField
                           control={siteForm.control}
                           name="siteName"
@@ -416,27 +507,11 @@ export default function SettingsPage() {
                             <FormItem>
                               <FormLabel>Site Name</FormLabel>
                               <FormControl>
-                                <Input {...field} placeholder="My Awesome Site" />
+                                <Input
+                                  {...field}
+                                  placeholder="Enter site name"
+                                />
                               </FormControl>
-                              <FormDescription>
-                                This name will appear in the browser title and throughout the application.
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={siteForm.control}
-                          name="siteDescription"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Site Description</FormLabel>
-                              <FormControl>
-                                <Textarea {...field} placeholder="A brief description of your site..." />
-                              </FormControl>
-                              <FormDescription>
-                                Used for SEO and social media sharing.
-                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -448,651 +523,686 @@ export default function SettingsPage() {
                             <FormItem>
                               <FormLabel>Admin Email</FormLabel>
                               <FormControl>
-                                <Input {...field} type="email" placeholder="admin@example.com" />
-                              </FormControl>
-                              <FormDescription>
-                                Primary administrator email address.
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button type="submit" disabled={saveLoading === "site"}>
-                          {saveLoading === "site" ? (
-                            <>
-                              <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <SaveIcon className="w-4 h-4 mr-2" />
-                              Save Changes
-                            </>
-                          )}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* User Settings */}
-              <TabsContent value="users">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>User Management</CardTitle>
-                    <CardDescription>
-                      Configure user registration and default settings
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...userForm}>
-                      <form onSubmit={userForm.handleSubmit((data) => saveSettings("users", data))} className="space-y-4">
-                        <FormField
-                          control={userForm.control}
-                          name="allowUserRegistration"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Allow User Registration</FormLabel>
-                                <FormDescription>
-                                  Allow new users to create accounts
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
+                                <Input
+                                  {...field}
+                                  type="email"
+                                  placeholder="admin@example.com"
                                 />
                               </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={userForm.control}
-                          name="requireEmailVerification"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Require Email Verification</FormLabel>
-                                <FormDescription>
-                                  Users must verify their email before accessing the system
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={userForm.control}
-                          name="defaultUserRole"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Default User Role</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select default role" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="user">User</SelectItem>
-                                  <SelectItem value="moderator">Moderator</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormDescription>
-                                Role assigned to new users by default
-                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                        <FormField
-                          control={userForm.control}
-                          name="maxLoginAttempts"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Max Login Attempts</FormLabel>
-                              <FormControl>
-                                <Input {...field} type="number" min={3} max={10} />
-                              </FormControl>
-                              <FormDescription>
-                                Number of failed login attempts before account lockout
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button type="submit" disabled={saveLoading === "users"}>
-                          {saveLoading === "users" ? (
-                            <>
-                              <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <SaveIcon className="w-4 h-4 mr-2" />
-                              Save Changes
-                            </>
-                          )}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                      </div>
 
-              {/* Email Settings */}
-              <TabsContent value="email">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Email Configuration</CardTitle>
-                    <CardDescription>
-                      Configure SMTP settings for sending emails
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...emailForm}>
-                      <form onSubmit={emailForm.handleSubmit((data) => saveSettings("email", data))} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={emailForm.control}
-                            name="smtpHost"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>SMTP Host</FormLabel>
-                                <FormControl>
-                                  <Input {...field} placeholder="smtp.gmail.com" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
+                      <FormField
+                        control={siteForm.control}
+                        name="siteDescription"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Site Description</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                placeholder="A brief description of your site"
+                                rows={4}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              This will be used in meta descriptions and site
+                              previews.
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={siteForm.control}
+                        name="siteLogo"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Site Logo URL</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                placeholder="https://example.com/logo.png"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              URL to your site logo image.
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
+                </div>
+
+                {/* Right Column - Profile Image */}
+                <div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Site Logo</CardTitle>
+                      <CardDescription>
+                        Upload and manage your site logo
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex flex-col items-center space-y-4">
+                        <Avatar className="h-24 w-24">
+                          <AvatarImage
+                            src={profileImage || "/default-logo.png"}
                           />
-                          <FormField
-                            control={emailForm.control}
-                            name="smtpPort"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>SMTP Port</FormLabel>
-                                <FormControl>
-                                  <Input {...field} type="number" placeholder="587" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={emailForm.control}
-                            name="smtpUser"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>SMTP Username</FormLabel>
-                                <FormControl>
-                                  <Input {...field} placeholder="your-email@gmail.com" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={emailForm.control}
-                            name="smtpPass"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>SMTP Password</FormLabel>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Input 
-                                      {...field} 
-                                      type={showPassword ? "text" : "password"} 
-                                      placeholder="Your app password"
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                      onClick={() => setShowPassword(!showPassword)}
-                                    >
-                                      {showPassword ? (
-                                        <IconEyeOff className="h-4 w-4" />
-                                      ) : (
-                                        <IconEye className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={emailForm.control}
-                            name="fromEmail"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>From Email</FormLabel>
-                                <FormControl>
-                                  <Input {...field} type="email" placeholder="noreply@example.com" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={emailForm.control}
-                            name="fromName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>From Name</FormLabel>
-                                <FormControl>
-                                  <Input {...field} placeholder="My Site" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
+                          <AvatarFallback>
+                            <IconGlobe className="h-12 w-12" />
+                          </AvatarFallback>
+                        </Avatar>
+
                         <div className="flex gap-2">
-                          <Button type="submit" disabled={saveLoading === "email"}>
-                            {saveLoading === "email" ? (
-                              <>
-                                <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                                Saving...
-                              </>
-                            ) : (
-                              <>
-                                <SaveIcon className="w-4 h-4 mr-2" />
-                                Save Changes
-                              </>
-                            )}
+                          <Button variant="outline" size="sm">
+                            <Camera className="h-4 w-4 mr-2" />
+                            Edit
                           </Button>
-                          <Button 
-                            type="button" 
-                            variant="outline" 
-                            onClick={testEmailConnection}
-                            disabled={saveLoading === "email-test"}
-                          >
-                            {saveLoading === "email-test" ? (
-                              <>
-                                <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                                Testing...
-                              </>
-                            ) : (
-                              <>
-                                <IconMail className="w-4 h-4 mr-2" />
-                                Test Connection
-                              </>
-                            )}
+                          <Button variant="outline" size="sm">
+                            Delete
                           </Button>
                         </div>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                      </div>
 
-              {/* Security Settings */}
-              <TabsContent value="security">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Security Settings</CardTitle>
-                    <CardDescription>
-                      Configure security policies and authentication settings
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...securityForm}>
-                      <form onSubmit={securityForm.handleSubmit((data) => saveSettings("security", data))} className="space-y-4">
-                        <FormField
-                          control={securityForm.control}
-                          name="sessionTimeout"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Session Timeout (seconds)</FormLabel>
-                              <FormControl>
-                                <Input {...field} type="number" min={300} max={86400} />
-                              </FormControl>
-                              <FormDescription>
-                                How long user sessions remain active (300-86400 seconds)
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={securityForm.control}
-                          name="passwordMinLength"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Minimum Password Length</FormLabel>
-                              <FormControl>
-                                <Input {...field} type="number" min={8} max={128} />
-                              </FormControl>
-                              <FormDescription>
-                                Minimum number of characters required for passwords
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={securityForm.control}
-                          name="requireStrongPasswords"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Require Strong Passwords</FormLabel>
-                                <FormDescription>
-                                  Enforce uppercase, lowercase, numbers, and special characters
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={securityForm.control}
-                          name="enableTwoFactor"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Enable Two-Factor Authentication</FormLabel>
-                                <FormDescription>
-                                  Allow users to enable 2FA for enhanced security
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <Button type="submit" disabled={saveLoading === "security"}>
-                          {saveLoading === "security" ? (
-                            <>
-                              <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <SaveIcon className="w-4 h-4 mr-2" />
-                              Save Changes
-                            </>
-                          )}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+                        <div className="flex flex-col items-center space-y-2">
+                          <Upload className="h-8 w-8 text-muted-foreground" />
+                          <div className="text-sm">
+                            <label
+                              htmlFor="logo-upload"
+                              className="cursor-pointer text-primary hover:underline"
+                            >
+                              Click to upload
+                            </label>
+                            <span className="text-muted-foreground">
+                              {" "}
+                              or drag and drop
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            SVG, PNG, JPG or GIF (Max. 800x400px)
+                          </div>
+                          <input
+                            id="logo-upload"
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
 
-              {/* Appearance Settings */}
-              <TabsContent value="appearance">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Appearance Settings</CardTitle>
-                    <CardDescription>
-                      Customize the look and feel of your application
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...appearanceForm}>
-                      <form onSubmit={appearanceForm.handleSubmit((data) => saveSettings("appearance", data))} className="space-y-4">
-                        <FormField
-                          control={appearanceForm.control}
-                          name="defaultTheme"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Default Theme</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select default theme" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="default">Default</SelectItem>
-                                  <SelectItem value="dark">Dark</SelectItem>
-                                  <SelectItem value="light">Light</SelectItem>
-                                </SelectContent>
-                              </Select>
+            {activeSection === "users" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>User Management Settings</CardTitle>
+                  <CardDescription>
+                    Configure user registration and default permissions.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...userForm}>
+                    <form className="space-y-6">
+                      <FormField
+                        control={userForm.control}
+                        name="allowUserRegistration"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Allow User Registration
+                              </FormLabel>
                               <FormDescription>
-                                Theme applied to new users and visitors
+                                Allow new users to register accounts
                               </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={appearanceForm.control}
-                          name="allowThemeSelection"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Allow Theme Selection</FormLabel>
-                                <FormDescription>
-                                  Let users choose their preferred theme
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={appearanceForm.control}
-                          name="customCss"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Custom CSS</FormLabel>
-                              <FormControl>
-                                <Textarea 
-                                  {...field} 
-                                  placeholder="/* Your custom CSS here */"
-                                  className="font-mono"
-                                  rows={6}
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                Additional CSS styles to customize the appearance
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button type="submit" disabled={saveLoading === "appearance"}>
-                          {saveLoading === "appearance" ? (
-                            <>
-                              <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <SaveIcon className="w-4 h-4 mr-2" />
-                              Save Changes
-                            </>
-                          )}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
 
-              {/* Advanced Settings */}
-              <TabsContent value="advanced">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Advanced Settings</CardTitle>
-                    <CardDescription>
-                      System-level configuration and maintenance options
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...advancedForm}>
-                      <form onSubmit={advancedForm.handleSubmit((data) => saveSettings("advanced", data))} className="space-y-4">
-                        <FormField
-                          control={advancedForm.control}
-                          name="maintenanceMode"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Maintenance Mode</FormLabel>
-                                <FormDescription>
-                                  Put the site in maintenance mode
-                                </FormDescription>
-                              </div>
+                      <FormField
+                        control={userForm.control}
+                        name="requireEmailVerification"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Require Email Verification
+                              </FormLabel>
+                              <FormDescription>
+                                Users must verify their email before accessing
+                                the system
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={userForm.control}
+                        name="defaultUserRole"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Default User Role</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
                               <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select default role" />
+                                </SelectTrigger>
                               </FormControl>
-                            </FormItem>
-                          )}
-                        />
+                              <SelectContent>
+                                <SelectItem value="user">User</SelectItem>
+                                <SelectItem value="moderator">
+                                  Moderator
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              Role assigned to new users by default
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={userForm.control}
+                        name="maxLoginAttempts"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Max Login Attempts</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="number"
+                                min={3}
+                                max={10}
+                                onChange={(e) =>
+                                  field.onChange(parseInt(e.target.value))
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Number of failed login attempts before account
+                              lockout
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "security" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Security Settings</CardTitle>
+                  <CardDescription>
+                    Configure authentication and security preferences.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...securityForm}>
+                    <form className="space-y-6">
+                      <FormField
+                        control={securityForm.control}
+                        name="sessionTimeout"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Session Timeout (minutes)</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="number"
+                                min={5}
+                                max={1440}
+                                onChange={(e) =>
+                                  field.onChange(parseInt(e.target.value))
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              How long users stay logged in (5 minutes to 24
+                              hours)
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={securityForm.control}
+                        name="passwordMinLength"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Minimum Password Length</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="number"
+                                min={8}
+                                max={128}
+                                onChange={(e) =>
+                                  field.onChange(parseInt(e.target.value))
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Minimum number of characters required for
+                              passwords
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={securityForm.control}
+                        name="requireStrongPasswords"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Require Strong Passwords
+                              </FormLabel>
+                              <FormDescription>
+                                Enforce password complexity requirements
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={securityForm.control}
+                        name="enableTwoFactor"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Enable Two-Factor Authentication
+                              </FormLabel>
+                              <FormDescription>
+                                Add an extra layer of security to user accounts
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "email" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Email Configuration</CardTitle>
+                  <CardDescription>
+                    Configure SMTP settings for sending emails.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...emailForm}>
+                    <form className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
                         <FormField
-                          control={advancedForm.control}
-                          name="maintenanceMessage"
+                          control={emailForm.control}
+                          name="smtpHost"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Maintenance Message</FormLabel>
+                              <FormLabel>SMTP Host</FormLabel>
                               <FormControl>
-                                <Textarea 
-                                  {...field} 
-                                  placeholder="We're performing scheduled maintenance. Please check back soon."
+                                <Input
+                                  {...field}
+                                  placeholder="smtp.gmail.com"
                                 />
                               </FormControl>
-                              <FormDescription>
-                                Message shown to users during maintenance
-                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
                         <FormField
-                          control={advancedForm.control}
-                          name="debugMode"
+                          control={emailForm.control}
+                          name="smtpPort"
                           render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Debug Mode</FormLabel>
-                                <FormDescription>
-                                  Enable detailed error logging and debugging
-                                </FormDescription>
-                              </div>
+                            <FormItem>
+                              <FormLabel>SMTP Port</FormLabel>
                               <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
+                                <Input
+                                  {...field}
+                                  type="number"
+                                  placeholder="587"
+                                  onChange={(e) =>
+                                    field.onChange(parseInt(e.target.value))
+                                  }
                                 />
                               </FormControl>
+                              <FormMessage />
                             </FormItem>
                           )}
                         />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
                         <FormField
-                          control={advancedForm.control}
-                          name="logLevel"
+                          control={emailForm.control}
+                          name="smtpUser"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Log Level</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select log level" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="error">Error</SelectItem>
-                                  <SelectItem value="warn">Warning</SelectItem>
-                                  <SelectItem value="info">Info</SelectItem>
-                                  <SelectItem value="debug">Debug</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormDescription>
-                                Minimum level for logging messages
-                              </FormDescription>
+                              <FormLabel>SMTP Username</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  placeholder="your-email@gmail.com"
+                                />
+                              </FormControl>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
                         <FormField
-                          control={advancedForm.control}
-                          name="cacheEnabled"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base">Enable Caching</FormLabel>
-                                <FormDescription>
-                                  Cache frequently accessed data for better performance
-                                </FormDescription>
-                              </div>
-                              <FormControl>
-                                <Switch
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={advancedForm.control}
-                          name="cacheTtl"
+                          control={emailForm.control}
+                          name="smtpPass"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Cache TTL (seconds)</FormLabel>
+                              <FormLabel>SMTP Password</FormLabel>
                               <FormControl>
-                                <Input {...field} type="number" min={60} max={86400} />
+                                <div className="relative">
+                                  <Input
+                                    {...field}
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="••••••••"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                    onClick={() =>
+                                      setShowPassword(!showPassword)
+                                    }
+                                  >
+                                    {showPassword ? (
+                                      <IconEyeOff className="h-4 w-4" />
+                                    ) : (
+                                      <IconEye className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </div>
                               </FormControl>
-                              <FormDescription>
-                                How long to keep cached data (60-86400 seconds)
-                              </FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                        <Button type="submit" disabled={saveLoading === "advanced"}>
-                          {saveLoading === "advanced" ? (
-                            <>
-                              <IconLoader className="w-4 h-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <SaveIcon className="w-4 h-4 mr-2" />
-                              Save Changes
-                            </>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={emailForm.control}
+                          name="fromEmail"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>From Email</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  type="email"
+                                  placeholder="noreply@yoursite.com"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
                           )}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                        />
+                        <FormField
+                          control={emailForm.control}
+                          name="fromName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>From Name</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  placeholder="Your Site Name"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "advanced" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Advanced Settings</CardTitle>
+                  <CardDescription>
+                    System-level configuration and debugging options.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...advancedForm}>
+                    <form className="space-y-6">
+                      <FormField
+                        control={advancedForm.control}
+                        name="maintenanceMode"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Maintenance Mode
+                              </FormLabel>
+                              <FormDescription>
+                                Put the site in maintenance mode for all users
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={advancedForm.control}
+                        name="maintenanceMessage"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Maintenance Message</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                placeholder="We're currently performing maintenance. Please check back soon."
+                                rows={3}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Message shown to users when site is in maintenance
+                              mode
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={advancedForm.control}
+                        name="logLevel"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Log Level</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select log level" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="error">Error</SelectItem>
+                                <SelectItem value="warn">Warning</SelectItem>
+                                <SelectItem value="info">Info</SelectItem>
+                                <SelectItem value="debug">Debug</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              Minimum level for logging messages
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={advancedForm.control}
+                        name="debugMode"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Debug Mode
+                              </FormLabel>
+                              <FormDescription>
+                                Enable detailed error reporting and debugging
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={advancedForm.control}
+                        name="cacheEnabled"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Enable Caching
+                              </FormLabel>
+                              <FormDescription>
+                                Enable system-wide caching for better
+                                performance
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={advancedForm.control}
+                        name="cacheTtl"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Cache TTL (seconds)</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="number"
+                                min={60}
+                                max={86400}
+                                onChange={(e) =>
+                                  field.onChange(parseInt(e.target.value))
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              How long to keep cached data (1 minute to 24
+                              hours)
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Add other sections (security, email, appearance, advanced) here */}
+            {(activeSection === "appearance" ||
+              activeSection === "notifications") && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{currentSection?.label}</CardTitle>
+                  <CardDescription>
+                    {currentSection?.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">
+                    Settings for {currentSection?.label} will be implemented
+                    here.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </SidebarInset>

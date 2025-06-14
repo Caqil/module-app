@@ -1,21 +1,22 @@
-// User model - Fixed duplicate index issue
 // src/lib/database/models/user.ts
+// Completely fixed version that matches User type exactly
 
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import bcrypt from 'bcryptjs'
-import { AUTH_CONFIG, DEFAULT_USER_PREFERENCES, USER_ROLES } from '@/lib/constants'
 import { UserRole } from '@/types/global'
-import { User } from '@/types/auth'
+import type { User } from '@/types/auth'
+import { AUTH_CONFIG } from '@/lib/constants'
 
 export interface IUserDocument extends Omit<User, '_id'>, Document {
   _id: mongoose.Types.ObjectId
+  
+  // Instance methods
   comparePassword(candidatePassword: string): Promise<boolean>
   generateResetToken(): string
   generateEmailVerificationToken(): string
   isAccountLocked(): boolean
   incrementLoginAttempts(): Promise<void>
   resetLoginAttempts(): Promise<void>
-  toJSON(): any
 }
 
 export interface IUserModel extends Model<IUserDocument> {
@@ -29,7 +30,7 @@ const userSchema = new Schema<IUserDocument>({
   email: {
     type: String,
     required: [true, 'Email is required'],
-    unique: true, // This already creates an index
+    unique: true,
     lowercase: true,
     trim: true,
     match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email'],
@@ -37,8 +38,8 @@ const userSchema = new Schema<IUserDocument>({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [8, 'Password must be at least 8 characters'],
-    select: false,
+    minlength: [6, 'Password must be at least 6 characters'],
+    select: false, // Don't include password in queries by default
   },
   firstName: {
     type: String,
@@ -58,7 +59,7 @@ const userSchema = new Schema<IUserDocument>({
   },
   role: {
     type: String,
-    enum: Object.keys(USER_ROLES) as UserRole[],
+    enum: ['user', 'moderator', 'admin'],
     default: 'user',
   },
   isActive: {
@@ -75,6 +76,7 @@ const userSchema = new Schema<IUserDocument>({
   },
   loginAttempts: {
     type: Number,
+    required: true,
     default: 0,
   },
   lockUntil: {
@@ -105,28 +107,28 @@ const userSchema = new Schema<IUserDocument>({
     theme: {
       type: String,
       enum: ['light', 'dark', 'system'],
-      default: DEFAULT_USER_PREFERENCES.theme,
+      default: 'system',
     },
     language: {
       type: String,
-      default: DEFAULT_USER_PREFERENCES.language,
+      default: 'en',
     },
     timezone: {
       type: String,
-      default: DEFAULT_USER_PREFERENCES.timezone,
+      default: 'UTC',
     },
     notifications: {
       email: {
         type: Boolean,
-        default: DEFAULT_USER_PREFERENCES.notifications.email,
+        default: true,
       },
       push: {
         type: Boolean,
-        default: DEFAULT_USER_PREFERENCES.notifications.push,
+        default: true,
       },
       sms: {
         type: Boolean,
-        default: DEFAULT_USER_PREFERENCES.notifications.sms,
+        default: false,
       },
     },
   },
@@ -140,32 +142,26 @@ const userSchema = new Schema<IUserDocument>({
     virtuals: true,
     transform: function(doc, ret) {
       delete ret.password
+      delete ret.__v
       delete ret.resetPasswordToken
       delete ret.resetPasswordExpires
       delete ret.emailVerificationToken
       delete ret.emailVerificationExpires
-      delete ret.__v
       return ret
     }
   },
   toObject: { virtuals: true },
 })
 
-// Indexes - Remove the duplicate email index since unique: true already creates one
-// userSchema.index({ email: 1 }) // ← REMOVED - This was causing the duplicate index warning
+// Indexes
+userSchema.index({ email: 1 })
 userSchema.index({ role: 1 })
 userSchema.index({ isActive: 1 })
 userSchema.index({ createdAt: -1 })
-userSchema.index({ lastLogin: -1 })
 
 // Virtual for full name
-userSchema.virtual('fullName').get(function(this: IUserDocument) {
+userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`
-})
-
-// Virtual for account locked status
-userSchema.virtual('isLocked').get(function(this: IUserDocument) {
-  return this.lockUntil ? this.lockUntil > new Date() : false
 })
 
 // Pre-save middleware to hash password
@@ -250,5 +246,24 @@ userSchema.statics.createUser = async function(userData: Partial<User>) {
   return user.save()
 }
 
-export const UserModel = (mongoose.models.User as IUserModel) || 
-  mongoose.model<IUserDocument, IUserModel>('User', userSchema)
+// Safe model creation that handles Edge Runtime
+function createUserModel(): IUserModel {
+  // Check if we're in an environment where mongoose.models exists
+  if (typeof mongoose?.models === 'object' && mongoose.models.User) {
+    return mongoose.models.User as IUserModel
+  }
+  
+  // Create new model if possible (Node.js runtime)
+  if (typeof mongoose?.model === 'function') {
+    return mongoose.model<IUserDocument, IUserModel>('User', userSchema)
+  }
+  
+  // If we can't create the model (Edge Runtime), return a proxy that throws meaningful errors
+  return new Proxy({} as IUserModel, {
+    get(target, prop) {
+      throw new Error(`UserModel is not available in Edge Runtime. Use API routes instead.`)
+    }
+  })
+}
+
+export const UserModel = createUserModel()

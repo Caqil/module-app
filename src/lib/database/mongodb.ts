@@ -1,6 +1,3 @@
-// ========================================
-// src/lib/database/mongodb.ts
-// ========================================
 
 import mongoose from 'mongoose'
 import { DB_CONFIG } from '@/lib/constants'
@@ -63,6 +60,9 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
       connection.error = null
     })
 
+    // Setup graceful shutdown handling (server-side only)
+    setupGracefulShutdown()
+
     return db
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown database error'
@@ -94,6 +94,7 @@ export async function disconnectFromDatabase(): Promise<void> {
 export function getConnectionState(): ConnectionState {
   return { ...connection }
 }
+
 export async function isHealthy(): Promise<boolean> {
   try {
     if (!connection.isConnected || !connection.connection || !mongoose.connection.db) {
@@ -109,13 +110,42 @@ export async function isHealthy(): Promise<boolean> {
   }
 }
 
-// Graceful shutdown handling
-process.on('SIGINT', async () => {
-  await disconnectFromDatabase()
-  process.exit(0)
-})
+// Graceful shutdown handling (server-side only)
+function setupGracefulShutdown(): void {
+  // Check if we're in a server environment (Node.js)
+  if (typeof window === 'undefined' && typeof process !== 'undefined' && process.on) {
+    let isShuttingDown = false
 
-process.on('SIGTERM', async () => {
-  await disconnectFromDatabase()
-  process.exit(0)
-})
+    const gracefulShutdown = async (signal: string) => {
+      if (isShuttingDown) return
+      isShuttingDown = true
+
+      console.log(`\n🔄 Received ${signal}. Gracefully shutting down...`)
+      
+      try {
+        await disconnectFromDatabase()
+        console.log('✅ MongoDB disconnected successfully')
+        process.exit(0)
+      } catch (error) {
+        console.error('❌ Error during graceful shutdown:', error)
+        process.exit(1)
+      }
+    }
+
+    // Handle different shutdown signals
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+    
+    // Handle uncaught exceptions
+    process.on('uncaughtException', async (error) => {
+      console.error('❌ Uncaught Exception:', error)
+      await gracefulShutdown('uncaughtException')
+    })
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', async (reason, promise) => {
+      console.error('❌ Unhandled Promise Rejection at:', promise, 'reason:', reason)
+      await gracefulShutdown('unhandledRejection')
+    })
+  }
+}
