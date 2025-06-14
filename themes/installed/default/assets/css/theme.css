@@ -1,0 +1,237 @@
+/* ========================================
+   themes/installed/default/assets/css/theme.css
+   ======================================== */
+
+/* CSS Custom Properties for theme customization */
+:root {
+  /* Theme colors - can be overridden by theme customization */
+  --theme-primary: #0066cc;
+  --theme-secondary: #6b7280;
+  --theme-accent: #f59e0b;
+  --theme-background: #ffffff;
+  --theme-foreground: #111827;
+  --theme-muted: #f9fafb;
+  --theme-muted-foreground: #6b7280;
+  --theme-border: #e5e7eb;
+  --theme-input: #ffffff;
+  --theme-ring: #0066cc;
+  --theme-success: #10b981;
+  --theme-warning: #f59e0b;
+  --theme-error: #ef4444;
+  --theme-info: #3b82f6;
+  
+  /* Theme border radius */
+  --theme-border-radius: 0.5rem;
+  
+  /* Theme animations */
+  --theme-animation-duration: 150ms;
+  --theme-animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark mode overrides */
+.dark {
+  --theme-background: #0f172a;
+  --theme-foreground: #f8fafc;
+  --theme-muted: #1e293b;
+  --theme-muted-foreground: #94a3b8;
+  --theme-border: #334155;
+  --theme-input: #1e293b;
+}
+
+/* Theme-specific utility classes */
+.theme-gradient-primary {
+  background: linear-gradient(to right, var(--theme-primary), var(--theme-accent));
+}
+
+.theme-gradient-bg {
+  background: linear-gradient(
+    135deg,
+    var(--theme-background) 0%,
+    var(--theme-muted) 100%
+  );
+}
+
+/* Enhanced animations for theme elements */
+.theme-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.theme-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom scrollbar */
+.theme-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.theme-scrollbar::-webkit-scrollbar-track {
+  background: var(--theme-muted);
+  border-radius: var(--theme-border-radius);
+}
+
+.theme-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--theme-primary);
+  border-radius: var(--theme-border-radius);
+}
+
+.theme-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-accent);
+}
+
+/* Theme-specific component styles */
+.theme-card {
+  background: var(--theme-background);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-border-radius);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  transition: all var(--theme-animation-duration) var(--theme-animation-easing);
+}
+
+.theme-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -3px rgb(0 0 0 / 0.1);
+}
+
+.theme-button {
+  background: var(--theme-primary);
+  color: var(--theme-background);
+  border: none;
+  border-radius: var(--theme-border-radius);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: all var(--theme-animation-duration) var(--theme-animation-easing);
+  cursor: pointer;
+}
+
+.theme-button:hover {
+  background: var(--theme-accent);
+  transform: translateY(-1px);
+}
+
+/* Hero section specific styles */
+.theme-hero {
+  background: linear-gradient(
+    135deg,
+    var(--theme-background) 0%,
+    var(--theme-muted) 50%,
+    var(--theme-background) 100%
+  );
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(59, 130, 246, 0.1) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+/* Feature grid styles */
+.theme-feature-icon {
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-accent));
+  border-radius: 1rem;
+  padding: 1rem;
+  box-shadow: 0 8px 25px -8px var(--theme-primary);
+  transition: all var(--theme-animation-duration) var(--theme-animation-easing);
+}
+
+.theme-feature-icon:hover {
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 0 15px 35px -5px var(--theme-primary);
+}
+
+/* Loading states */
+.theme-loading {
+  background: linear-gradient(
+    90deg,
+    var(--theme-muted) 25%,
+    var(--theme-border) 50%,
+    var(--theme-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Responsive design enhancements */
+@media (max-width: 768px) {
+  .theme-hero {
+    padding: 2rem 1rem;
+  }
+  
+  .theme-card {
+    margin: 0.5rem 0;
+  }
+  
+  .theme-button {
+    width: 100%;
+    margin: 0.25rem 0;
+  }
+}
+
+/* Print styles */
+@media print {
+  .theme-hero,
+  .theme-feature-icon {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  :root {
+    --theme-primary: #000000;
+    --theme-secondary: #666666;
+    --theme-background: #ffffff;
+    --theme-foreground: #000000;
+    --theme-border: #000000;
+  }
+  
+  .dark {
+    --theme-primary: #ffffff;
+    --theme-background: #000000;
+    --theme-foreground: #ffffff;
+    --theme-border: #ffffff;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .theme-float,
+  .theme-pulse,
+  .theme-card,
+  .theme-button,
+  .theme-feature-icon {
+    animation: none !important;
+    transition: none !important;
+  }
+}

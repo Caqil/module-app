@@ -1,0 +1,129 @@
+{
+  "id": "default",
+  "name": "Default Theme",
+  "version": "1.0.0",
+  "description": "A clean, modern default theme for Modular App with Next.js styling",
+  "author": {
+    "name": "Modular App Team",
+    "email": "team@modularapp.com",
+    "url": "https://modularapp.com"
+  },
+  "license": "MIT",
+  "category": "minimal",
+  "compatibility": {
+    "nextjs": "^15.0.0",
+    "app": "^1.0.0"
+  },
+  "features": [
+    "Responsive design",
+    "Dark mode support",
+    "Customizable colors",
+    "Modern typography",
+    "Component-based architecture",
+    "SEO optimized"
+  ],
+  "main": "index.js",
+  "layouts": {
+    "default": "layouts/default.tsx",
+    "admin": "layouts/admin.tsx",
+    "auth": "layouts/auth.tsx"
+  },
+  "pages": {
+    "home": "pages/home.tsx",
+    "about": "pages/about.tsx",
+    "contact": "pages/contact.tsx"
+  },
+  "components": {
+    "header": "components/header.tsx",
+    "footer": "components/footer.tsx",
+    "hero": "components/hero.tsx",
+    "feature-grid": "components/feature-grid.tsx"
+  },
+  "assets": {
+    "css": ["assets/css/theme.css"],
+    "images": [
+      "assets/images/logo.svg",
+      "assets/images/hero-bg.jpg"
+    ],
+    "fonts": ["assets/fonts/inter.woff2"]
+  },
+  "settings": {
+    "schema": {
+      "colors": {
+        "type": "object",
+        "properties": {
+          "primary": { "type": "string", "format": "color" },
+          "secondary": { "type": "string", "format": "color" },
+          "accent": { "type": "string", "format": "color" },
+          "background": { "type": "string", "format": "color" },
+          "foreground": { "type": "string", "format": "color" }
+        }
+      },
+      "typography": {
+        "type": "object",
+        "properties": {
+          "fontFamily": {
+            "type": "object",
+            "properties": {
+              "sans": { "type": "array", "items": { "type": "string" } },
+              "serif": { "type": "array", "items": { "type": "string" } },
+              "mono": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      },
+      "borderRadius": { "type": "string" },
+      "spacing": {
+        "type": "object",
+        "properties": {
+          "containerMaxWidth": { "type": "string" },
+          "sectionPadding": { "type": "string" }
+        }
+      }
+    },
+    "defaults": {
+      "colors": {
+        "primary": "#0066cc",
+        "secondary": "#6b7280",
+        "accent": "#f59e0b",
+        "background": "#ffffff",
+        "foreground": "#111827",
+        "muted": "#f9fafb",
+        "mutedForeground": "#6b7280",
+        "border": "#e5e7eb",
+        "input": "#ffffff",
+        "ring": "#0066cc",
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "error": "#ef4444",
+        "info": "#3b82f6"
+      },
+      "typography": {
+        "fontFamily": {
+          "sans": ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+          "serif": ["Merriweather", "ui-serif", "Georgia", "serif"],
+          "mono": ["Fira Code", "ui-monospace", "SFMono-Regular", "monospace"]
+        }
+      },
+      "borderRadius": "0.5rem",
+      "spacing": {
+        "containerMaxWidth": "1200px",
+        "sectionPadding": "4rem"
+      },
+      "layout": {
+        "headerHeight": "4rem",
+        "footerHeight": "auto",
+        "sidebarWidth": "16rem"
+      },
+      "shadows": {
+        "sm": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "md": "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+        "lg": "0 10px 15px -3px rgb(0 0 0 / 0.1)"
+      },
+      "animations": {
+        "duration": "150ms",
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+      }
+    }
+  }
+}
