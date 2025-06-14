@@ -1,0 +1,12 @@
+{
+  "_id": "backup_6889b8e4e4d16cf4363c53fc145929d1",
+  "pluginId": "oauth-plugin",
+  "pluginName": "OAuth Authentication Plugin",
+  "version": "1.0.0",
+  "config": {},
+  "backupPath": "/Users/cakra/Desktop/module-app/public/uploads/plugins/backups/backup_6889b8e4e4d16cf4363c53fc145929d1.json",
+  "backupType": "auto",
+  "createdBy": "684c4d8c331585c49cc43f64",
+  "createdAt": "2025-06-14T01:10:44.005Z",
+  "restorable": true
+}

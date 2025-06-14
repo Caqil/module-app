@@ -1,0 +1,33 @@
+{
+  "_id": "backup_9f84c3d2cfa440a44208fe1f3c20a3a8",
+  "pluginId": "oauth-plugin",
+  "pluginName": "OAuth Authentication Plugin",
+  "version": "1.0.0",
+  "config": {
+    "google": {
+      "enabled": false,
+      "clientId": "",
+      "clientSecret": ""
+    },
+    "github": {
+      "enabled": false,
+      "clientId": "",
+      "clientSecret": ""
+    },
+    "facebook": {
+      "enabled": false,
+      "clientId": "",
+      "clientSecret": ""
+    },
+    "linkedin": {
+      "enabled": false,
+      "clientId": "",
+      "clientSecret": ""
+    }
+  },
+  "backupPath": "/Users/cakra/Desktop/module-app/public/uploads/plugins/backups/backup_9f84c3d2cfa440a44208fe1f3c20a3a8.json",
+  "backupType": "auto",
+  "createdBy": "684c4d8c331585c49cc43f64",
+  "createdAt": "2025-06-14T01:04:28.251Z",
+  "restorable": true
+}

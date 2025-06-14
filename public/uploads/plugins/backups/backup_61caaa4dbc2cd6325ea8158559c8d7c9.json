@@ -1,0 +1,12 @@
+{
+  "_id": "backup_61caaa4dbc2cd6325ea8158559c8d7c9",
+  "pluginId": "minimal-plugin",
+  "pluginName": "Minimal Plugin",
+  "version": "1.0.0",
+  "config": {},
+  "backupPath": "/Users/cakra/Desktop/module-app/public/uploads/plugins/backups/backup_61caaa4dbc2cd6325ea8158559c8d7c9.json",
+  "backupType": "auto",
+  "createdBy": "684c4d8c331585c49cc43f64",
+  "createdAt": "2025-06-14T01:00:05.054Z",
+  "restorable": true
+}
