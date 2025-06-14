@@ -106,7 +106,7 @@ export class PluginManager {
     file: FileUpload,
     userId: string,
     options: PluginInstallOptions = {}
-  ): Promise<{ success: boolean; pluginId?: string; message: string }> {
+  ): Promise<{ success: boolean; pluginId?: string; message: string; plugin?: any }> {
     const { overwrite = false, activate = false, skipValidation = false, backup = true } = options
 
     try {
@@ -455,6 +455,66 @@ export class PluginManager {
       }
     }
   }
+
+async activateMultiplePlugins(pluginIds: string[], userId: string): Promise<{
+  success: number;
+  failed: number;
+  results: Array<{ pluginId: string; success: boolean; message: string }>
+}> {
+  console.log(`⚡ Bulk activating ${pluginIds.length} plugins...`);
+  
+  const results = [];
+  let success = 0;
+  let failed = 0;
+
+  for (const pluginId of pluginIds) {
+    try {
+      const result = await this.activatePlugin(pluginId, userId);
+      results.push({ pluginId, ...result });
+      if (result.success) success++; else failed++;
+    } catch (error) {
+      results.push({ 
+        pluginId, 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      failed++;
+    }
+  }
+
+  console.log(`✅ Bulk activation complete: ${success} success, ${failed} failed`);
+  return { success, failed, results };
+}
+
+async deactivateMultiplePlugins(pluginIds: string[], userId: string): Promise<{
+  success: number;
+  failed: number;
+  results: Array<{ pluginId: string; success: boolean; message: string }>
+}> {
+  console.log(`⚡ Bulk deactivating ${pluginIds.length} plugins...`);
+  
+  const results = [];
+  let success = 0;
+  let failed = 0;
+
+  for (const pluginId of pluginIds) {
+    try {
+      const result = await this.deactivatePlugin(pluginId, userId);
+      results.push({ pluginId, ...result });
+      if (result.success) success++; else failed++;
+    } catch (error) {
+      results.push({ 
+        pluginId, 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      failed++;
+    }
+  }
+
+  console.log(`✅ Bulk deactivation complete: ${success} success, ${failed} failed`);
+  return { success, failed, results };
+}
 
   async getInstalledPlugins(): Promise<InstalledPlugin[]> {
     const plugins = await InstalledPluginModel.find().sort({ createdAt: -1 }).lean<InstalledPlugin[]>()

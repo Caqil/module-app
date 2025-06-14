@@ -19,7 +19,9 @@
 
 # production
 /build
-/public
+/public/
+/plugins/
+/themes/
 # misc
 .DS_Store
 *.pem

@@ -1,424 +1,378 @@
 "use client";
 import * as React from "react";
 import {
-  IconDashboard,
+  IconHome,
   IconUsers,
   IconPuzzle,
   IconPalette,
   IconSettings,
-  IconHelp,
-  IconSearch,
-  IconDatabase,
-  IconReport,
-  IconFileWord,
-  IconInnerShadowTop,
-  IconCirclePlusFilled,
+  IconShield,
+  IconKey,
+  IconCloud,
+  IconBell,
   IconMail,
-  IconDots,
-  IconFolder,
-  IconShare3,
-  IconTrash,
-  IconCreditCard,
-  IconDotsVertical,
-  IconLogout,
-  IconUserCircle,
-  IconNotification,
-  type Icon,
+  IconDatabase,
+  IconFileText,
+  IconHelpCircle,
+  IconLoader,
+  IconRefresh,
+  IconExternalLink,
 } from "@tabler/icons-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
+  SidebarRail,
 } from "@/components/ui/sidebar";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { pluginRegistry } from "@/lib/plugins/registry";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { BarChart2Icon } from "lucide-react";
 
-// Navigation components
-function NavMain({
-  items,
-}: {
-  items: {
-    title: string;
-    url: string;
-    icon: Icon;
-  }[];
-}) {
-  const { isMobile } = useSidebar();
-  return (
-    <SidebarGroup>
-      <SidebarGroupContent className="flex flex-col gap-2">
-        <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2">
-            <SidebarMenuButton
-              tooltip="Quick Actions"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 duration-200 ease-linear"
-            >
-              <IconCirclePlusFilled />
-              <span>Quick Actions</span>
-            </SidebarMenuButton>
-            <Button
-              size="icon"
-              className="size-8 group-data-[collapsible=icon]:opacity-0"
-              variant="outline"
-            >
-              <IconMail />
-              <span className="sr-only">Notifications</span>
-            </Button>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
-                <a href={item.url}>
-                  <item.icon />
-                  <span>{item.title}</span>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-          <SidebarMenuItem>
-            <SidebarMenuButton className="text-sidebar-foreground/70">
-              <IconDots className="text-sidebar-foreground/70" />
-              <span>More</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
-  );
-}
-
-function NavDocuments({
-  items,
-}: {
-  items: {
-    name: string;
-    url: string;
-    icon: Icon;
-  }[];
-}) {
-  const { isMobile } = useSidebar();
-  return (
-    <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>System Tools</SidebarGroupLabel>
-      <SidebarMenu>
-        {items.map((item) => (
-          <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton asChild>
-              <a href={item.url}>
-                <item.icon />
-                <span>{item.name}</span>
-              </a>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuAction
-                  showOnHover
-                  className="data-[state=open]:bg-accent rounded-sm"
-                >
-                  <IconDots />
-                  <span className="sr-only">More</span>
-                </SidebarMenuAction>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-24 rounded-lg"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
-              >
-                <DropdownMenuItem>
-                  <IconFolder />
-                  <span>Open</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <IconShare3 />
-                  <span>Share</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive">
-                  <IconTrash />
-                  <span>Delete</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
-        <SidebarMenuItem>
-          <SidebarMenuButton className="text-sidebar-foreground/70">
-            <IconDots className="text-sidebar-foreground/70" />
-            <span>More</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </SidebarGroup>
-  );
-}
-
-function NavSecondary({
-  items,
-  ...props
-}: {
-  items: {
-    title: string;
-    url: string;
-    icon: Icon;
-  }[];
-} & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
-  return (
-    <SidebarGroup {...props}>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
-                <a href={item.url}>
-                  <item.icon />
-                  <span>{item.title}</span>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
-  );
-}
-
-function NavUser({
-  user,
-}: {
-  user: {
-    name: string;
-    email: string;
-    avatar: string;
-  };
-}) {
-  const router = useRouter();
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const { isMobile } = useSidebar();
-  const handleAdminLogout = async () => {
-    try {
-      setIsSigningOut(true);
-      console.log("🚪 [ADMIN] Starting admin logout...");
-
-      const response = await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-        },
-      });
-
-      console.log(
-        "📤 [ADMIN] Logout API response:",
-        response.status,
-        response.ok
-      );
-
-      // Clear any client-side storage
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.removeItem("user");
-          localStorage.removeItem("session");
-          sessionStorage.clear();
-        } catch (e) {
-          console.warn("Could not clear client storage:", e);
-        }
-      }
-
-      // Force complete page reload to ensure all state is cleared
-      console.log("🔄 [ADMIN] Redirecting to signin...");
-      window.location.href = "/signin?message=Admin logged out successfully";
-    } catch (error) {
-      console.error("❌ [ADMIN] Logout error:", error);
-      // Force logout even on error
-      window.location.href = "/signin?message=Logged out";
-    } finally {
-      setIsSigningOut(false);
-    }
-  };
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-            >
-              <Avatar className="h-8 w-8 rounded-lg grayscale">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">MA</AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{user.name}</span>
-                <span className="text-muted-foreground truncate text-xs">
-                  {user.email}
-                </span>
-              </div>
-              <IconDotsVertical className="ml-auto size-4" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
-            align="end"
-            sideOffset={4}
-          >
-            <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">MA</AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {user.email}
-                  </span>
-                </div>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <IconUserCircle />
-                Account
-              </DropdownMenuItem>
-
-              <DropdownMenuItem>
-                <IconNotification />
-                Notifications
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleAdminLogout}
-              disabled={isSigningOut}
-              className="cursor-pointer focus:bg-destructive focus:text-destructive-foreground"
-            >
-              <IconLogout />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
-  );
-}
-
-const data = {
-  user: {
-    name: "System Admin",
-    email: "admin@modularapp.com",
-    avatar: "/avatars/admin.jpg",
+// Main navigation items
+const mainNavItems = [
+  {
+    title: "Dashboard",
+    url: "/admin",
+    icon: IconHome,
   },
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/admin/dashboard",
-      icon: IconDashboard,
-    },
-    {
-      title: "Users",
-      url: "/admin/users",
-      icon: IconUsers,
-    },
-    {
-      title: "Plugins",
-      url: "/admin/plugins",
-      icon: IconPuzzle,
-    },
-    {
-      title: "Themes",
-      url: "/admin/themes",
-      icon: IconPalette,
-    },
-  ],
-  navSecondary: [
-    {
-      title: "Settings",
-      url: "/admin/settings",
-      icon: IconSettings,
-    },
-    {
-      title: "Get Help",
-      url: "/help",
-      icon: IconHelp,
-    },
-    {
-      title: "Search",
-      url: "/search",
-      icon: IconSearch,
-    },
-  ],
-  systemTools: [
-    {
-      name: "Database",
-      url: "/admin/database",
-      icon: IconDatabase,
-    },
-    {
-      name: "Reports",
-      url: "/admin/reports",
-      icon: IconReport,
-    },
-    {
-      name: "API Docs",
-      url: "/admin/api-docs",
-      icon: IconFileWord,
-    },
-  ],
+  {
+    title: "Users",
+    url: "/admin/users",
+    icon: IconUsers,
+  },
+  {
+    title: "Plugins",
+    url: "/admin/plugins",
+    icon: IconPuzzle,
+  },
+  {
+    title: "Themes",
+    url: "/admin/themes",
+    icon: IconPalette,
+  },
+  {
+    title: "Settings",
+    url: "/admin/settings",
+    icon: IconSettings,
+  },
+];
+
+// System navigation items
+const systemNavItems = [
+  {
+    title: "API Keys",
+    url: "/admin/api-keys",
+    icon: IconKey,
+  },
+  {
+    title: "Email Templates",
+    url: "/admin/email-templates",
+    icon: IconMail,
+  },
+  {
+    title: "Notifications",
+    url: "/admin/notifications",
+    icon: IconBell,
+  },
+  {
+    title: "Logs",
+    url: "/admin/logs",
+    icon: IconFileText,
+  },
+];
+
+// Icon mapping for plugin admin pages
+const getPluginIcon = (iconName?: string) => {
+  const iconMap: Record<string, any> = {
+    Shield: IconShield,
+    BarChart2Icon: BarChart2Icon,
+    Database: IconDatabase,
+    Key: IconKey,
+    Settings: IconSettings,
+    Mail: IconMail,
+    Bell: IconBell,
+    Users: IconUsers,
+    FileText: IconFileText,
+    Cloud: IconCloud,
+    Puzzle: IconPuzzle,
+    Palette: IconPalette,
+  };
+
+  return iconMap[iconName || ""] || IconSettings;
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [pluginAdminPages, setPluginAdminPages] = React.useState<
+    Array<{
+      title: string;
+      url: string;
+      icon: any;
+      pluginId: string;
+      pluginName: string;
+      description?: string;
+    }>
+  >([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Load plugin admin pages
+  React.useEffect(() => {
+    loadPluginAdminPages();
+
+    // Listen for plugin state changes
+    const handlePluginStateChange = () => {
+      console.log("🔄 Plugin state changed, refreshing sidebar...");
+      loadPluginAdminPages();
+    };
+
+    window.addEventListener("pluginStateChanged", handlePluginStateChange);
+    return () =>
+      window.removeEventListener("pluginStateChanged", handlePluginStateChange);
+  }, []);
+
+  const loadPluginAdminPages = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Wait for plugin registry to be ready
+      await waitForPluginRegistry();
+
+      // Get all active plugins with admin pages
+      const activePlugins = pluginRegistry.getActivePlugins();
+      const adminPages: Array<{
+        title: string;
+        url: string;
+        icon: any;
+        pluginId: string;
+        pluginName: string;
+        description?: string;
+      }> = [];
+
+      for (const plugin of activePlugins) {
+        if (!plugin.adminPages || plugin.adminPages.size === 0) continue;
+
+        for (const [pagePath, pageInfo] of plugin.adminPages) {
+          adminPages.push({
+            title: pageInfo.title,
+            url: `/admin${pagePath}`,
+            icon: getPluginIcon(pageInfo.icon),
+            pluginId: plugin.manifest.id,
+            pluginName: plugin.manifest.name,
+            description: plugin.manifest.description,
+          });
+        }
+      }
+
+      // Sort by plugin name, then by title
+      adminPages.sort((a, b) => {
+        if (a.pluginName !== b.pluginName) {
+          return a.pluginName.localeCompare(b.pluginName);
+        }
+        return a.title.localeCompare(b.title);
+      });
+
+      setPluginAdminPages(adminPages);
+
+      console.log(
+        `📋 Loaded ${adminPages.length} plugin admin pages:`,
+        adminPages.map((p) => p.url)
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      setError(errorMessage);
+      console.error("Failed to load plugin admin pages:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const waitForPluginRegistry = async (timeout = 10000) => {
+    const startTime = Date.now();
+
+    return new Promise<void>((resolve, reject) => {
+      const checkReady = () => {
+        if (
+          pluginRegistry &&
+          typeof pluginRegistry.getActivePlugins === "function"
+        ) {
+          resolve();
+        } else if (Date.now() - startTime > timeout) {
+          reject(new Error("Plugin registry timeout"));
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      checkReady();
+    });
+  };
+
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <a href="/admin/dashboard">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Modular App</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+    <Sidebar collapsible="icon" {...props}>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavDocuments items={data.systemTools} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        {/* Main Navigation */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Main</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild tooltip={item.title}>
+                    <a href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Plugin Navigation - Dynamic */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="flex items-center justify-between">
+            <span>Plugins</span>
+            {loading && <IconLoader className="w-3 h-3 animate-spin" />}
+            {error && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadPluginAdminPages}
+                className="h-auto p-0 text-xs"
+              >
+                <IconRefresh className="w-3 h-3" />
+              </Button>
+            )}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {loading && (
+                <SidebarMenuItem>
+                  <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground">
+                    <IconLoader className="w-4 h-4 animate-spin" />
+                    <span>Loading plugins...</span>
+                  </div>
+                </SidebarMenuItem>
+              )}
+
+              {error && (
+                <SidebarMenuItem>
+                  <div className="px-2 py-1">
+                    <div className="text-xs text-red-500 mb-1">
+                      Plugin load error
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadPluginAdminPages}
+                      className="h-6 text-xs"
+                    >
+                      <IconRefresh className="w-3 h-3 mr-1" />
+                      Retry
+                    </Button>
+                  </div>
+                </SidebarMenuItem>
+              )}
+
+              {!loading && !error && pluginAdminPages.length === 0 && (
+                <SidebarMenuItem>
+                  <div className="px-2 py-1 text-sm text-muted-foreground">
+                    No plugin admin pages
+                  </div>
+                </SidebarMenuItem>
+              )}
+
+              {!loading &&
+                !error &&
+                pluginAdminPages.map((page) => (
+                  <SidebarMenuItem key={`${page.pluginId}-${page.url}`}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={page.description || page.title}
+                    >
+                      <a href={page.url} className="flex items-center gap-2">
+                        <page.icon className="w-4 h-4" />
+                        <span className="flex-1">{page.title}</span>
+                        {/* Show plugin badge on hover */}
+                        <IconExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* System Navigation */}
+        <SidebarGroup>
+          <SidebarGroupLabel>System</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {systemNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild tooltip={item.title}>
+                    <a href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Help */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Help & Documentation">
+                  <a href="/admin/help">
+                    <IconHelpCircle />
+                    <span>Help</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Plugin Debug Info (in development) */}
+        {process.env.NODE_ENV === "development" && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Debug</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <div className="px-2 py-1 text-xs text-muted-foreground space-y-1">
+                    <div>
+                      Active Plugins:{" "}
+                      {pluginAdminPages.length > 0
+                        ? [...new Set(pluginAdminPages.map((p) => p.pluginId))]
+                            .length
+                        : 0}
+                    </div>
+                    <div>Admin Pages: {pluginAdminPages.length}</div>
+                    {error && (
+                      <div className="text-red-500">Error: {error}</div>
+                    )}
+                  </div>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={data.user} />
-      </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   );
 }
