@@ -1,5 +1,5 @@
 // src/lib/validations.ts
-// Updated validations with theme schemas removed
+// FIXED: Updated plugin validation schema to match type definitions
 
 import { z } from 'zod'
 
@@ -47,12 +47,23 @@ export const signinSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, 'Password is required'),
 })
-
+export const loginSchema = signinSchema
 export const signupSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   firstName: nameSchema,
   lastName: nameSchema,
+})
+
+export const registerSchema = signupSchema
+
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+})
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  password: passwordSchema,
 })
 
 // System validations
@@ -84,7 +95,6 @@ export const systemSettingsSchema = z.object({
 })
 
 // Setup wizard validations
-// UPDATED: Theme step removed
 export const setupWizardSchema = z.object({
   step: z.enum(['welcome', 'admin', 'database']),
   data: z.record(z.any()),
@@ -119,18 +129,48 @@ export const fileUploadSchema = z.object({
   allowedExtensions: z.array(z.string()),
 })
 
-// Plugin validations
+// FIXED: Plugin validations - Updated to match type definitions exactly
 export const pluginManifestSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1).max(100),
-  version: z.string().regex(/^\d+\.\d+\.\d+$/),
-  description: z.string().max(500),
-  author: z.string().max(100),
+  id: z.string().min(1, 'Plugin ID is required'),
+  name: z.string().min(1, 'Plugin name is required').max(100),
+  version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Version must be in format x.y.z'),
+  description: z.string().max(500, 'Description cannot exceed 500 characters'),
+  
+  // FIXED: Author should be an object, not a string
+  author: z.object({
+    name: z.string().min(1, 'Author name is required'),
+    email: z.string().email().optional(),
+    url: z.string().url().optional(),
+  }),
+  
+  license: z.string().min(1, 'License is required'),
   homepage: z.string().url().optional(),
   repository: z.string().url().optional(),
-  license: z.string().max(50).optional(),
-  keywords: z.array(z.string()).max(10).optional(),
-  main: z.string().optional(),
+  keywords: z.array(z.string()).default([]),
+  
+  // FIXED: Category should match the enum from types
+  category: z.enum([
+    'analytics',
+    'commerce', 
+    'communication',
+    'content',
+    'integration',
+    'security',
+    'utility',
+    'dashboard',
+    'reporting',
+    'other'
+  ]),
+  
+  // FIXED: Compatibility object with required fields
+  compatibility: z.object({
+    nextjs: z.string().min(1, 'Next.js compatibility is required'),
+    app: z.string().min(1, 'App compatibility is required'),
+  }),
+  
+  dependencies: z.record(z.string()).default({}),
+  
+  // FIXED: Permissions array
   permissions: z.array(z.enum([
     'database:read',
     'database:write',
@@ -144,43 +184,45 @@ export const pluginManifestSchema = z.object({
     'settings:write',
     'plugins:manage',
     'themes:manage'
-  ])),
-  hooks: z.object({
-    beforeInstall: z.string().optional(),
-    afterInstall: z.string().optional(),
-    beforeUninstall: z.string().optional(),
-    afterUninstall: z.string().optional(),
-    beforeActivate: z.string().optional(),
-    afterActivate: z.string().optional(),
-    beforeDeactivate: z.string().optional(),
-    afterDeactivate: z.string().optional(),
-  }).optional(),
+  ])).default([]),
+  
+  screenshots: z.array(z.string()).optional(),
+  changelog: z.array(z.object({
+    version: z.string(),
+    date: z.string(),
+    changes: z.array(z.string()),
+    breaking: z.boolean().optional(),
+  })).optional(),
+  
+  // Required main entry point
+  main: z.string().min(1, 'Main entry point is required'),
+  
+  // Optional plugin features
+  routes: z.array(z.object({
+    path: z.string(),
+    method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
+    handler: z.string(),
+    middleware: z.array(z.string()).optional(),
+    permissions: z.array(z.string()).optional(),
+  })).optional(),
+  
   adminPages: z.array(z.object({
-    id: z.string(),
+    path: z.string(),
     title: z.string(),
     icon: z.string().optional(),
     component: z.string(),
     permissions: z.array(z.string()).optional(),
+    order: z.number().optional(),
+    parent: z.string().optional(),
   })).optional(),
-  apiRoutes: z.array(z.object({
-    method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
-    path: z.string(),
-    handler: z.string(),
-    permissions: z.array(z.string()).optional(),
-  })).optional(),
-  dashboardWidgets: z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    component: z.string(),
-    size: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
-    permissions: z.array(z.string()).optional(),
-  })).optional(),
+  
   sidebarItems: z.array(z.object({
     id: z.string(),
     title: z.string(),
     icon: z.string().optional(),
-    href: z.string(),
+    href: z.string().optional(),
     permissions: z.array(z.string()).optional(),
+    order: z.number().optional(),
     children: z.array(z.object({
       id: z.string(),
       title: z.string(),
@@ -188,7 +230,29 @@ export const pluginManifestSchema = z.object({
       permissions: z.array(z.string()).optional(),
     })).optional(),
   })).optional(),
-  configuration: z.object({
+  
+  dashboardWidgets: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    component: z.string(),
+    size: z.enum(['small', 'medium', 'large', 'full']),
+    permissions: z.array(z.string()).optional(),
+    order: z.number().optional(),
+    refreshInterval: z.number().optional(),
+  })).optional(),
+  
+  hooks: z.array(z.object({
+    name: z.string(),
+    handler: z.string(),
+    priority: z.number().optional(),
+  })).optional(),
+  
+  assets: z.object({
+    css: z.array(z.string()).optional(),
+    js: z.array(z.string()).optional(),
+  }).optional(),
+  
+  settings: z.object({
     schema: z.record(z.any()).optional(),
     defaults: z.record(z.any()).optional(),
   }).optional(),
@@ -205,7 +269,14 @@ export const themeManifestSchema = z.object({
   name: z.string().min(1).max(100),
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   description: z.string().max(500),
-  author: z.string().max(100),
+  
+  // FIXED: Theme author should also be an object for consistency
+  author: z.object({
+    name: z.string().min(1, 'Author name is required'),
+    email: z.string().email().optional(),
+    url: z.string().url().optional(),
+  }),
+  
   homepage: z.string().url().optional(),
   repository: z.string().url().optional(),
   license: z.string().max(50).optional(),

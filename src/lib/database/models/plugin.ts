@@ -1,5 +1,5 @@
-// Plugin model - Fixed duplicate index issue
 // src/lib/database/models/plugin.ts
+// FIXED: Safe model creation that handles Edge Runtime
 
 import { InstallationStatus } from '@/types/global'
 import { InstalledPlugin, PluginBackup, PluginPermission } from '@/types/plugin'
@@ -22,11 +22,16 @@ export interface IInstalledPluginModel extends Model<IInstalledPluginDocument> {
   deactivatePlugin(pluginId: string): Promise<IInstalledPluginDocument | null>
 }
 
+export interface IPluginBackupModel extends Model<IPluginBackupDocument> {
+  findByPluginId(pluginId: string): Promise<IPluginBackupDocument[]>
+  findRestorable(): Promise<IPluginBackupDocument[]>
+}
+
 const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   pluginId: {
     type: String,
     required: [true, 'Plugin ID is required'],
-    unique: true, // This already creates an index
+    unique: true,
     trim: true,
   },
   name: {
@@ -83,14 +88,13 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes - Remove the duplicate pluginId index since unique: true already creates one
-// installedPluginSchema.index({ pluginId: 1 }) // ← REMOVED - This was causing the duplicate index warning
+// Indexes for InstalledPlugin
 installedPluginSchema.index({ status: 1 })
 installedPluginSchema.index({ isActive: 1 })
+installedPluginSchema.index({ installedBy: 1 })
 installedPluginSchema.index({ createdAt: -1 })
-installedPluginSchema.index({ 'manifest.permissions': 1 })
 
-// Static methods
+// Static methods for InstalledPlugin
 installedPluginSchema.statics.findByPluginId = function(pluginId: string) {
   return this.findOne({ pluginId })
 }
@@ -105,8 +109,7 @@ installedPluginSchema.statics.findByStatus = function(status: InstallationStatus
 
 installedPluginSchema.statics.findByPermission = function(permission: PluginPermission) {
   return this.find({ 
-    'manifest.permissions': permission,
-    isActive: true 
+    'manifest.permissions': { $in: [permission] } 
   }).sort({ createdAt: -1 })
 }
 
@@ -178,8 +181,73 @@ const pluginBackupSchema = new Schema<IPluginBackupDocument>({
 pluginBackupSchema.index({ pluginId: 1 })
 pluginBackupSchema.index({ createdAt: -1 })
 
-export const InstalledPluginModel = (mongoose.models.InstalledPlugin as IInstalledPluginModel) || 
-  mongoose.model<IInstalledPluginDocument, IInstalledPluginModel>('InstalledPlugin', installedPluginSchema)
+// Static methods for PluginBackup
+pluginBackupSchema.statics.findByPluginId = function(pluginId: string) {
+  return this.find({ pluginId }).sort({ createdAt: -1 })
+}
 
-export const PluginBackupModel = mongoose.models.PluginBackup || 
-  mongoose.model<IPluginBackupDocument>('PluginBackup', pluginBackupSchema)
+pluginBackupSchema.statics.findRestorable = function() {
+  return this.find({ restorable: true }).sort({ createdAt: -1 })
+}
+
+// FIXED: Safe model creation functions that handle Edge Runtime
+function createInstalledPluginModel(): IInstalledPluginModel {
+  // Check if model already exists to prevent re-compilation
+  if (mongoose.models && mongoose.models.InstalledPlugin) {
+    return mongoose.models.InstalledPlugin as IInstalledPluginModel
+  }
+  
+  // Only create model if we have mongoose.model function (Node.js runtime)
+  if (typeof mongoose?.model === 'function') {
+    try {
+      return mongoose.model<IInstalledPluginDocument, IInstalledPluginModel>('InstalledPlugin', installedPluginSchema)
+    } catch (error) {
+      // If model creation fails, check if it already exists
+      if (mongoose.models && mongoose.models.InstalledPlugin) {
+        return mongoose.models.InstalledPlugin as IInstalledPluginModel
+      }
+      throw error
+    }
+  }
+  
+  // Fallback for Edge Runtime or other environments
+  return new Proxy({} as IInstalledPluginModel, {
+    get(target, prop) {
+      throw new Error(`InstalledPluginModel.${String(prop)} is not available in this runtime environment. Use API routes instead.`)
+    }
+  })
+}
+
+function createPluginBackupModel(): IPluginBackupModel {
+  // Check if model already exists to prevent re-compilation
+  if (mongoose.models && mongoose.models.PluginBackup) {
+    return mongoose.models.PluginBackup as IPluginBackupModel
+  }
+  
+  // Only create model if we have mongoose.model function (Node.js runtime)
+  if (typeof mongoose?.model === 'function') {
+    try {
+      return mongoose.model<IPluginBackupDocument, IPluginBackupModel>('PluginBackup', pluginBackupSchema)
+    } catch (error) {
+      // If model creation fails, check if it already exists
+      if (mongoose.models && mongoose.models.PluginBackup) {
+        return mongoose.models.PluginBackup as IPluginBackupModel
+      }
+      throw error
+    }
+  }
+  
+  // Fallback for Edge Runtime or other environments
+  return new Proxy({} as IPluginBackupModel, {
+    get(target, prop) {
+      throw new Error(`PluginBackupModel.${String(prop)} is not available in this runtime environment. Use API routes instead.`)
+    }
+  })
+}
+
+// Export the models using safe creation functions
+export const InstalledPluginModel = createInstalledPluginModel()
+export const PluginBackupModel = createPluginBackupModel()
+
+// Export the schemas for testing or other uses
+export { installedPluginSchema, pluginBackupSchema }

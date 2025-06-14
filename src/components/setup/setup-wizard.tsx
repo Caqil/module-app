@@ -1,5 +1,5 @@
 // src/components/setup/setup-wizard.tsx
-// Fixed setup wizard with proper data sanitization
+// FIXED: Proper setup flow that processes admin step before completion
 
 "use client";
 
@@ -14,7 +14,6 @@ import { ApiResponse } from "@/types/global";
 import { StepWelcome } from "./step-welcome";
 import { StepDatabase } from "./step-database";
 import { StepAdmin } from "./step-admin";
-// NOTE: StepTheme removed - theme setup moved to admin panel
 
 interface SetupStep {
   id: string;
@@ -34,7 +33,7 @@ type SetupData = {
   [K in (typeof SETUP_STEPS)[number]["id"]]?: any;
 };
 
-// UPDATED: Theme step removed
+// Setup steps configuration
 const SETUP_STEPS: SetupStep[] = [
   {
     id: "welcome",
@@ -56,7 +55,7 @@ const SETUP_STEPS: SetupStep[] = [
   },
 ];
 
-// ADDED: Data sanitization utility
+// Data sanitization utility
 const sanitizeData = (data: any): any => {
   if (data === null || data === undefined) {
     return data;
@@ -128,11 +127,12 @@ export function SetupWizard() {
     }
   };
 
+  // FIXED: Process admin step before completion
   const handleNext = async (stepData?: any) => {
     const currentStepData = SETUP_STEPS[currentStep];
     setError(null);
 
-    // UPDATED: Sanitize data before saving
+    // Sanitize data before saving
     const sanitizedData = sanitizeData(stepData);
 
     // Save current step data
@@ -143,16 +143,7 @@ export function SetupWizard() {
       }));
     }
 
-    // If this is the last step, complete setup
-    if (currentStep === SETUP_STEPS.length - 1) {
-      await completeSetup({
-        ...setupData,
-        [currentStepData.id]: sanitizedData,
-      });
-      return;
-    }
-
-    // UPDATED: Only make API calls for steps that need backend processing
+    // Steps that require backend processing
     const stepsRequiringAPI = ["database", "admin"];
 
     if (stepsRequiringAPI.includes(currentStepData.id)) {
@@ -160,6 +151,8 @@ export function SetupWizard() {
       setIsLoading(true);
 
       try {
+        console.log(`🔄 Processing ${currentStepData.id} step...`);
+
         const response = await fetch("/api/setup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -172,19 +165,33 @@ export function SetupWizard() {
         const result: ApiResponse = await response.json();
 
         if (result.success) {
+          console.log(`✅ ${currentStepData.id} step completed successfully`);
+
+          // FIXED: If this was the admin step (last step), complete setup
+          if (currentStep === SETUP_STEPS.length - 1) {
+            console.log("🚀 Admin step completed, now completing setup...");
+            await completeSetup({
+              ...setupData,
+              [currentStepData.id]: sanitizedData,
+            });
+            return;
+          }
+
           // Move to next step
           setCurrentStep((prev) => Math.min(prev + 1, SETUP_STEPS.length - 1));
         } else {
+          console.error(`❌ ${currentStepData.id} step failed:`, result.error);
           setError(result.error || "Setup step failed");
         }
       } catch (error) {
-        console.error("Setup step failed:", error);
+        console.error(`❌ ${currentStepData.id} step network error:`, error);
         setError("Network error. Please try again.");
       } finally {
         setIsLoading(false);
       }
     } else {
       // For frontend-only steps (like welcome), just move to next step
+      console.log(`➡️ Skipping ${currentStepData.id} step (frontend-only)`);
       setCurrentStep((prev) => Math.min(prev + 1, SETUP_STEPS.length - 1));
     }
   };
@@ -199,7 +206,9 @@ export function SetupWizard() {
     setError(null);
 
     try {
-      // UPDATED: Sanitize all data before sending
+      console.log("🏁 Completing setup with data:", Object.keys(allData));
+
+      // Sanitize all data before sending
       const sanitizedAllData = sanitizeData(allData);
 
       const response = await fetch("/api/setup", {
@@ -214,15 +223,17 @@ export function SetupWizard() {
       const result: ApiResponse = await response.json();
 
       if (result.success) {
-        // Redirect to signin page after successful setup so user can log in
+        console.log("✅ Setup completed successfully!");
+        // Redirect to signin page after successful setup
         router.push(
           "/signin?message=Setup completed successfully! Please sign in with your admin account."
         );
       } else {
+        console.error("❌ Setup completion failed:", result.error);
         setError(result.error || "Setup completion failed");
       }
     } catch (error) {
-      console.error("Setup completion failed:", error);
+      console.error("❌ Setup completion network error:", error);
       setError("Network error during setup completion");
     } finally {
       setIsLoading(false);
@@ -276,49 +287,45 @@ export function SetupWizard() {
                 {index < SETUP_STEPS.length - 1 && (
                   <div
                     className={`w-12 h-1 mx-2 rounded ${
-                      index < currentStep
-                        ? "bg-primary"
-                        : "bg-muted-foreground/30"
+                      index < currentStep ? "bg-primary" : "bg-muted"
                     }`}
                   />
                 )}
               </div>
             ))}
           </div>
+          <div className="mt-2 text-center">
+            <span className="text-sm text-muted-foreground">
+              Step {currentStep + 1} of {SETUP_STEPS.length}
+            </span>
+          </div>
         </div>
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-6">
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          </div>
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
-        {/* Current Step Content */}
+        {/* Current Step Card */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Circle className="w-5 h-5 text-primary" />
-              <span>{SETUP_STEPS[currentStep].title}</span>
-            </CardTitle>
+            <CardTitle>{SETUP_STEPS[currentStep].title}</CardTitle>
           </CardHeader>
           <CardContent>
             <CurrentStepComponent
               onNext={handleNext}
               onPrev={handlePrev}
-              data={setupData[SETUP_STEPS[currentStep].id]}
+              data={setupData[SETUP_STEPS[currentStep].id] || {}}
               isLoading={isLoading}
             />
           </CardContent>
         </Card>
 
-        {/* Footer */}
-        <div className="text-center mt-8">
-          <p className="text-sm text-muted-foreground">
-            Step {currentStep + 1} of {SETUP_STEPS.length}
-          </p>
+        {/* Progress Info */}
+        <div className="mt-6 text-center text-sm text-muted-foreground">
+          <p>{SETUP_STEPS[currentStep].description}</p>
         </div>
       </div>
     </div>

@@ -1,41 +1,18 @@
 // src/app/api/setup/route.ts
-// Updated setup route with theme step removed
+// FIXED: Properly import models instead of using inline schemas
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { connectToDatabase } from '@/lib/database/mongodb'
-import { generateId } from '@/lib/utils'
 import { clearSetupStatusCache } from '@/lib/middleware/setup'
 import { ApiResponse, UserRole } from '@/types/global'
 import mongoose from 'mongoose'
 import { addSecurityHeaders, logMiddlewareAction } from '@/lib/middleware/utils'
 
-// Database Models
-const UserModel = mongoose.models.User || 
-  mongoose.model('User', new mongoose.Schema({
-    id: { type: String, required: true, unique: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
-    role: { type: String, enum: ['admin', 'moderator', 'user'], default: 'user' },
-    isEmailVerified: { type: Boolean, default: false },
-    preferences: { type: mongoose.Schema.Types.Mixed, default: {} },
-    metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  }, { timestamps: true }))
-
-const SystemSettingsModel = mongoose.models.SystemSettings ||
-  mongoose.model('SystemSettings', new mongoose.Schema({
-    siteName: { type: String, required: true },
-    adminEmail: { type: String, required: true },
-    isSetupComplete: { type: Boolean, default: false },
-    allowUserRegistration: { type: Boolean, default: true },
-    maintenanceMode: { type: Boolean, default: false },
-    activeTheme: { type: String, default: null },
-    seoSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
-    emailSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
-  }, { timestamps: true }))
+// FIXED: Import proper models instead of defining inline schemas
+import { UserModel } from '@/lib/database/models/user'
+import { SystemSettingsModel } from '@/lib/database/models/settings'
 
 // Validation Schemas
 const databaseSchema = z.object({
@@ -55,8 +32,6 @@ const adminSchema = z.object({
   adminLastName: z.string().min(1, 'Last name is required'),
 })
 
-// UPDATED: Removed completeSchema since we simplified completion step
-
 export async function GET() {
   try {
     await connectToDatabase()
@@ -68,7 +43,7 @@ export async function GET() {
       success: true,
       data: {
         isSetupComplete: isComplete,
-        siteName: settings?.siteName,
+        siteName: settings?.siteName || 'Modular App',
         hasAdmin: isComplete,
       }
     })
@@ -168,9 +143,7 @@ async function handleAdminStep(data: any) {
     await connectToDatabase()
     
     // Check if admin already exists
-    const existingAdmin = await UserModel.findOne({ 
-      email: validatedData.adminEmail 
-    })
+    const existingAdmin = await UserModel.findByEmail(validatedData.adminEmail)
     
     if (existingAdmin) {
       const response = NextResponse.json<ApiResponse>({
@@ -180,21 +153,18 @@ async function handleAdminStep(data: any) {
       return addSecurityHeaders(response)
     }
     
-    // Hash password
-    const hashedPassword = await bcrypt.hash(validatedData.adminPassword, 12)
-    
-    // Create admin user
-    const adminUser = new UserModel({
-      id: generateId(),
+    // FIXED: Create admin user using proper UserModel.createUser method
+    const adminUserData = {
       email: validatedData.adminEmail,
-      password: hashedPassword,
+      password: validatedData.adminPassword, // Will be hashed by the model
       firstName: validatedData.adminFirstName,
       lastName: validatedData.adminLastName,
       role: 'admin' as UserRole,
       isEmailVerified: true,
-    })
+      isActive: true,
+    }
     
-    await adminUser.save()
+    const adminUser = await UserModel.createUser(adminUserData)
     
     // Create or update system settings
     await SystemSettingsModel.findOneAndUpdate(
@@ -202,17 +172,23 @@ async function handleAdminStep(data: any) {
       {
         siteName: validatedData.siteName,
         adminEmail: validatedData.adminEmail,
+        isSetupComplete: false, // Will be set to true in complete step
       },
       { upsert: true }
     )
     
     logMiddlewareAction('ADMIN_CREATED', 'setup', { 
-      adminEmail: validatedData.adminEmail 
+      adminEmail: validatedData.adminEmail,
+      userId: adminUser._id.toString()
     })
 
     const response = NextResponse.json<ApiResponse>({
       success: true,
-      message: 'Admin user created successfully'
+      message: 'Admin user created successfully',
+      data: {
+        userId: adminUser._id.toString(),
+        email: adminUser.email
+      }
     })
 
     return addSecurityHeaders(response)
@@ -234,9 +210,6 @@ async function handleAdminStep(data: any) {
 
 async function handleCompleteStep(data: any) {
   try {
-    // UPDATED: Simplified validation for completion
-    // We just need to mark setup as complete since individual steps were already validated
-    
     await connectToDatabase()
     
     // Mark setup as complete
@@ -244,8 +217,7 @@ async function handleCompleteStep(data: any) {
       {},
       {
         isSetupComplete: true,
-        // Set default theme as null since theme step is removed
-        activeTheme: null,
+        activeTheme: null, // No default theme since theme step was removed
       },
       { upsert: true }
     )
