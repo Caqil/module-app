@@ -1,91 +1,102 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { setupAdminSchema, setupDatabaseSchema } from '@/lib/validations'
-import { ApiResponse } from '@/types/global'
-import { connectToDatabase, isHealthy } from '@/lib/database/mongodb'
-import { SystemSettingsModel } from '@/lib/database/models/settings'
-import { UserModel } from '@/lib/database/models/user'
-import { InstalledThemeModel } from '@/lib/database/models/theme'
+import { z } from 'zod'
+import bcrypt from 'bcryptjs'
+import { connectToDatabase } from '@/lib/database/mongodb'
+import { generateId } from '@/lib/utils'
 import { clearSetupStatusCache } from '@/lib/middleware/setup'
-import { logMiddlewareAction, addSecurityHeaders } from '@/lib/middleware/utils'
-let setupStatusCache: {
-  isComplete: boolean
-  timestamp: number
-  ttl: number
-} = {
-  isComplete: false,
-  timestamp: 0,
-  ttl: 30000, // 30 seconds cache
-}
-async function checkDatabaseConnection(): Promise<boolean> {
-  try {
-    const mongoUri = process.env.MONGODB_URI
-    if (!mongoUri) {
-      return false
-    }
-    
-    // Just test the connection, don't create any data
-    const mongoose = require('mongoose')
-    const testConnection = await mongoose.createConnection(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
-    })
-    
-    await testConnection.close()
-    return true
-  } catch (error) {
-    return false
-  }
-}
+import { ApiResponse, UserRole } from '@/types/global'
+import mongoose from 'mongoose'
+import { addSecurityHeaders, logMiddlewareAction } from '@/lib/middleware/utils'
+
+// Database Models
+const UserModel = mongoose.models.User || 
+  mongoose.model('User', new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    firstName: { type: String, required: true },
+    lastName: { type: String, required: true },
+    role: { type: String, enum: ['admin', 'moderator', 'user'], default: 'user' },
+    isEmailVerified: { type: Boolean, default: false },
+    preferences: { type: mongoose.Schema.Types.Mixed, default: {} },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  }, { timestamps: true }))
+
+const SystemSettingsModel = mongoose.models.SystemSettings ||
+  mongoose.model('SystemSettings', new mongoose.Schema({
+    siteName: { type: String, required: true },
+    adminEmail: { type: String, required: true },
+    isSetupComplete: { type: Boolean, default: false },
+    allowUserRegistration: { type: Boolean, default: true },
+    maintenanceMode: { type: Boolean, default: false },
+    activeTheme: { type: String, default: null },
+    seoSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
+    emailSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
+  }, { timestamps: true }))
+
+const InstalledThemeModel = mongoose.models.InstalledTheme ||
+  mongoose.model('InstalledTheme', new mongoose.Schema({
+    themeId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    version: { type: String, required: true },
+    status: { type: String, enum: ['installed', 'installing', 'failed', 'disabled'], default: 'installed' },
+    customization: { type: mongoose.Schema.Types.Mixed, default: {} },
+    installPath: { type: String, required: true },
+    isActive: { type: Boolean, default: false },
+    manifest: { type: mongoose.Schema.Types.Mixed, required: true },
+    installedBy: { type: String, required: true },
+    activatedAt: { type: Date },
+  }, { timestamps: true }))
+
+// Validation Schemas
+const databaseSchema = z.object({
+  mongoUrl: z.string().min(1, 'MongoDB URL is required'),
+})
+
+const adminSchema = z.object({
+  siteName: z.string().min(1, 'Site name is required'),
+  adminEmail: z.string().email('Invalid email address'),
+  adminPassword: z.string().min(8, 'Password must be at least 8 characters'),
+  adminFirstName: z.string().min(1, 'First name is required'),
+  adminLastName: z.string().min(1, 'Last name is required'),
+})
+
+const themeSchema = z.object({
+  selectedTheme: z.string().optional(),
+  skipTheme: z.boolean().optional(),
+  installDefault: z.boolean().optional(),
+}).optional()
+
+const completeSchema = z.object({
+  siteName: z.string().min(1),
+  adminEmail: z.string().email(),
+  theme: themeSchema,
+})
+
 export async function GET() {
   try {
-    // First check if database is even accessible
-    const canConnect = await checkDatabaseConnection()
-    if (!canConnect) {
-      return NextResponse.json<ApiResponse>({
-        success: true,
-        data: { 
-          isSetupComplete: false,
-          siteName: 'Modular App',
-          needsSetup: true,
-          dbConnection: false
-        }
-      })
-    }
-
     await connectToDatabase()
-    const { settings, isDefault } = await SystemSettingsModel.getSettingsOrDefault()
-
-    // If settings is null (no database record), setup is not complete
-    const isSetupComplete = settings ? settings.isSetupComplete : false
-
+    
+    const settings = await SystemSettingsModel.findOne()
+    const isComplete = settings?.isSetupComplete || false
+    
     const response = NextResponse.json<ApiResponse>({
       success: true,
-      data: { 
-        isSetupComplete,
-        siteName: settings?.siteName || 'Modular App',
-        allowUserRegistration: settings?.allowUserRegistration ?? true,
-        maintenanceMode: settings?.maintenanceMode ?? false,
-        needsSetup: !isSetupComplete,
-        dbConnection: true,
-        hasSettings: !isDefault
+      data: {
+        isSetupComplete: isComplete,
+        siteName: settings?.siteName,
+        hasAdmin: isComplete,
       }
     })
 
     return addSecurityHeaders(response)
-
   } catch (error) {
-    console.error('Get setup status error:', error)
+    console.error('Setup status check failed:', error)
     
     const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Internal server error',
-      data: {
-        isSetupComplete: false,
-        siteName: 'Modular App',
-        needsSetup: true,
-        dbConnection: false
-      }
+      error: 'Failed to check setup status'
     }, { status: 500 })
 
     return addSecurityHeaders(response)
@@ -97,30 +108,29 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { step, data } = body
 
-    logMiddlewareAction('SETUP_STEP_REQUEST', step, { hasData: !!data })
-
     switch (step) {
       case 'database':
-        return await handleDatabaseStep(data)
+        return handleDatabaseStep(data)
       case 'admin':
-        return await handleAdminStep(data)
+        return handleAdminStep(data)
       case 'complete':
-        return await handleCompleteStep(data)
+        return handleCompleteStep(data)
       default:
         const response = NextResponse.json<ApiResponse>({
           success: false,
-          error: 'Invalid setup step',
-          data: { availableSteps: ['database', 'admin', 'complete'] }
+          error: 'Invalid setup step'
         }, { status: 400 })
         return addSecurityHeaders(response)
     }
-
   } catch (error) {
-    console.error('Setup error:', error)
+    console.error('Setup request failed:', error)
     
     const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Internal server error'
+      error: 'Setup request failed',
+      data: {
+        errorType: error instanceof Error ? error.name : 'Unknown'
+      }
     }, { status: 500 })
 
     return addSecurityHeaders(response)
@@ -128,146 +138,93 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleDatabaseStep(data: any) {
-  const validation = setupDatabaseSchema.safeParse(data)
-  
-  if (!validation.success) {
-    const response = NextResponse.json<ApiResponse>({
-      success: false,
-      errors: validation.error.flatten().fieldErrors,
-      message: 'Database configuration validation failed'
-    }, { status: 400 })
-    return addSecurityHeaders(response)
-  }
-
   try {
+    const validatedData = databaseSchema.parse(data)
+    
     // Test database connection
-    await connectToDatabase()
-    const healthy = await isHealthy()
-
-    if (!healthy) {
-      const response = NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Database connection test failed',
-        data: { 
-          connectionString: validation.data.mongodbUri ? 'Provided' : 'Missing',
-          healthCheck: false 
-        }
-      }, { status: 400 })
-      return addSecurityHeaders(response)
-    }
-
-    logMiddlewareAction('DATABASE_TEST_SUCCESS', 'setup', { 
-      hasUri: !!validation.data.mongodbUri 
+    await mongoose.disconnect()
+    await mongoose.connect(validatedData.mongoUrl)
+    
+    logMiddlewareAction('DATABASE_CONNECTED', 'setup', { 
+      url: validatedData.mongoUrl.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@') 
     })
 
     const response = NextResponse.json<ApiResponse>({
       success: true,
-      message: 'Database connection successful',
-      data: { 
-        connectionString: 'Valid',
-        healthCheck: true,
-        testTimestamp: new Date().toISOString()
-      }
+      message: 'Database connection successful'
     })
 
     return addSecurityHeaders(response)
-
   } catch (error) {
-    console.error('Database connection test failed:', error)
+    console.error('Database setup failed:', error)
     
     const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Database connection failed',
-      data: { 
-        connectionString: validation.data.mongodbUri ? 'Provided' : 'Missing',
-        healthCheck: false,
-        errorType: error instanceof Error ? error.name : 'Unknown'
-      }
-    }, { status: 500 })
+      error: error instanceof z.ZodError 
+        ? error.errors[0].message 
+        : 'Database connection failed'
+    }, { status: 400 })
 
     return addSecurityHeaders(response)
   }
 }
 
 async function handleAdminStep(data: any) {
-  const validation = setupAdminSchema.safeParse(data)
-  
-  if (!validation.success) {
-    const response = NextResponse.json<ApiResponse>({
-      success: false,
-      errors: validation.error.flatten().fieldErrors,
-      message: 'Admin account validation failed'
-    }, { status: 400 })
-    return addSecurityHeaders(response)
-  }
-
   try {
     await connectToDatabase()
+    const validatedData = adminSchema.parse(data)
 
     // Check if admin already exists
     const existingAdmin = await UserModel.findOne({ role: 'admin' })
     if (existingAdmin) {
-      logMiddlewareAction('ADMIN_EXISTS', 'setup', { 
-        existingAdminId: existingAdmin._id 
-      })
-      
       const response = NextResponse.json<ApiResponse>({
         success: false,
-        error: 'Admin user already exists',
-        data: { 
-          existingAdmin: true,
-          adminEmail: existingAdmin.email 
-        }
+        error: 'Admin account already exists'
       }, { status: 400 })
       return addSecurityHeaders(response)
     }
 
     // Create admin user
-    const adminUser = await UserModel.createUser({
-      email: validation.data.adminEmail,
-      password: validation.data.adminPassword,
-      firstName: validation.data.adminFirstName,
-      lastName: validation.data.adminLastName,
-      role: 'admin',
-      isActive: true,
+    const hashedPassword = await bcrypt.hash(validatedData.adminPassword, 12)
+    const adminUser = await UserModel.create({
+      id: generateId(),
+      email: validatedData.adminEmail,
+      password: hashedPassword,
+      firstName: validatedData.adminFirstName,
+      lastName: validatedData.adminLastName,
+      role: 'admin' as UserRole,
       isEmailVerified: true,
-    })
-
-    // Update system settings
-    await SystemSettingsModel.updateSettings({
-      siteName: validation.data.siteName,
-      adminEmail: validation.data.adminEmail,
+      preferences: {},
+      metadata: {
+        createdDuringSetup: true,
+        setupVersion: '1.0.0'
+      }
     })
 
     logMiddlewareAction('ADMIN_CREATED', 'setup', { 
-      adminId: adminUser._id,
-      siteName: validation.data.siteName 
+      adminId: adminUser.id,
+      email: adminUser.email 
     })
 
     const response = NextResponse.json<ApiResponse>({
       success: true,
-      data: { 
-        adminId: adminUser._id,
-        adminEmail: adminUser.email,
-        siteName: validation.data.siteName,
-        createdAt: adminUser.createdAt
-      },
-      message: 'Admin user created successfully'
+      message: 'Admin account created successfully',
+      data: {
+        adminId: adminUser.id,
+        email: adminUser.email
+      }
     })
 
     return addSecurityHeaders(response)
-
   } catch (error) {
-    console.error('Admin creation failed:', error)
+    console.error('Admin setup failed:', error)
     
     const response = NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Failed to create admin user',
-      data: { 
-        step: 'admin_creation',
-        errorType: error instanceof Error ? error.name : 'Unknown'
-      }
-    }, { status: 500 })
+      error: error instanceof z.ZodError 
+        ? error.errors[0].message 
+        : 'Failed to create admin account'
+    }, { status: 400 })
 
     return addSecurityHeaders(response)
   }
@@ -277,9 +234,9 @@ async function handleCompleteStep(data: any) {
   try {
     await connectToDatabase()
 
-    // Check if setup is already complete by looking for actual database record
+    // Check if setup is already complete
     const existingSettings = await SystemSettingsModel.findOne()
-    if (existingSettings && existingSettings.isSetupComplete) {
+    if (existingSettings?.isSetupComplete) {
       logMiddlewareAction('SETUP_ALREADY_COMPLETE', 'setup')
       
       const response = NextResponse.json<ApiResponse>({
@@ -288,7 +245,6 @@ async function handleCompleteStep(data: any) {
         data: { 
           isSetupComplete: true,
           siteName: existingSettings.siteName,
-          completedAt: existingSettings.updatedAt
         }
       })
       return addSecurityHeaders(response)
@@ -300,45 +256,51 @@ async function handleCompleteStep(data: any) {
       const response = NextResponse.json<ApiResponse>({
         success: false,
         error: 'Admin user not found. Please complete the admin setup step first.',
-        data: { 
-          missingStep: 'admin',
-          currentStep: 'complete'
-        }
       }, { status: 400 })
       return addSecurityHeaders(response)
     }
 
-    // NOW create the actual settings record in database
+    // Install default theme if requested
+    let activeTheme = null
+    if (data?.theme?.installDefault || data?.theme?.selectedTheme === 'default') {
+      try {
+        activeTheme = await installDefaultTheme(adminUser.id)
+        logMiddlewareAction('DEFAULT_THEME_INSTALLED', 'setup', { 
+          themeId: activeTheme 
+        })
+      } catch (error) {
+        console.warn('Failed to install default theme:', error)
+      }
+    }
+
+    // Create system settings
     const settingsData = {
       siteName: data.siteName || 'Modular App',
       adminEmail: adminUser.email,
       isSetupComplete: true,
-      allowUserRegistration: data.allowUserRegistration ?? true,
+      allowUserRegistration: true,
       maintenanceMode: false,
-      activeTheme: data.theme?.selectedTheme || null
+      activeTheme,
+      seoSettings: {
+        title: data.siteName || 'Modular App',
+        description: 'A powerful modular web application',
+        keywords: 'modular, app, nextjs, typescript',
+      },
+      emailSettings: {
+        fromName: data.siteName || 'Modular App',
+        fromEmail: adminUser.email,
+      },
     }
 
-    // Initialize settings in database for the first time
-    const settings = await SystemSettingsModel.initializeSettings(settingsData)
+    const settings = await SystemSettingsModel.create(settingsData)
 
-    // Activate default theme if specified
-    if (data?.theme?.selectedTheme) {
-      try {
-        await activateDefaultTheme(data.theme.selectedTheme)
-        logMiddlewareAction('DEFAULT_THEME_ACTIVATED', 'setup', { 
-          themeId: data.theme.selectedTheme 
-        })
-      } catch (error) {
-        console.warn('Failed to activate default theme:', error)
-      }
-    }
-
-    // Clear the setup status cache
+    // Clear setup status cache
     clearSetupStatusCache()
 
     logMiddlewareAction('SETUP_COMPLETED', 'setup', { 
       siteName: settings.siteName,
-      adminEmail: settings.adminEmail
+      adminEmail: settings.adminEmail,
+      themeInstalled: !!activeTheme,
     })
 
     const response = NextResponse.json<ApiResponse>({
@@ -348,8 +310,8 @@ async function handleCompleteStep(data: any) {
         isSetupComplete: true,
         siteName: settings.siteName,
         adminEmail: settings.adminEmail,
-        completedAt: new Date().toISOString(),
-        cacheCleared: true
+        activeTheme,
+        redirectTo: '/signin?message=Setup completed successfully',
       }
     })
 
@@ -361,103 +323,85 @@ async function handleCompleteStep(data: any) {
     const response = NextResponse.json<ApiResponse>({
       success: false,
       error: 'Failed to complete setup',
-      data: { 
-        step: 'completion',
-        errorType: error instanceof Error ? error.name : 'Unknown'
-      }
     }, { status: 500 })
 
     return addSecurityHeaders(response)
   }
 }
 
-async function activateDefaultTheme(themeId: string) {
+async function installDefaultTheme(userId: string): Promise<string> {
   try {
-    // Create default theme entry if it doesn't exist
-    const existingTheme = await InstalledThemeModel.findByThemeId(themeId)
+    const themeId = 'default'
     
-    if (!existingTheme) {
-      // Create default theme record
-      await InstalledThemeModel.create({
-        themeId,
-        name: getThemeName(themeId),
-        version: '1.0.0',
-        status: 'installed',
-        customization: getDefaultThemeCustomization(themeId),
-        installPath: `/themes/${themeId}`,
+    // Check if theme already exists
+    const existingTheme = await InstalledThemeModel.findOne({ themeId })
+    if (existingTheme) {
+      // Just activate it
+      await InstalledThemeModel.findByIdAndUpdate(existingTheme._id, {
         isActive: true,
-        manifest: getDefaultThemeManifest(themeId),
-        installedBy: 'system',
         activatedAt: new Date(),
       })
-    } else {
-      // Activate existing theme
-      await InstalledThemeModel.activateTheme(themeId)
+      return themeId
     }
 
-    // Update system settings
-    await SystemSettingsModel.updateSettings({
-      activeTheme: themeId,
+    // Create default theme record
+    const defaultTheme = await InstalledThemeModel.create({
+      themeId,
+      name: 'Default Theme',
+      version: '1.0.0',
+      status: 'installed',
+      customization: {
+        colors: {
+          primary: '#0066cc',
+          secondary: '#6b7280',
+          accent: '#f59e0b',
+          background: '#ffffff',
+          foreground: '#111827',
+        },
+        typography: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            serif: ['Merriweather', 'serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+        },
+        borderRadius: '0.5rem',
+      },
+      installPath: '/themes/default',
+      isActive: true,
+      manifest: {
+        id: themeId,
+        name: 'Default Theme',
+        version: '1.0.0',
+        description: 'Default theme for Modular App',
+        author: {
+          name: 'Modular App Team',
+          email: 'team@modularapp.com',
+        },
+        license: 'MIT',
+        category: 'minimal',
+        components: {
+          homepage: 'components/homepage.tsx',
+          layout: 'layouts/default.tsx',
+          header: 'components/header.tsx',
+          footer: 'components/footer.tsx',
+        },
+        features: [
+          'Responsive design',
+          'Dark mode support',
+          'Customizable colors',
+          'Modern components',
+        ],
+      },
+      installedBy: userId,
+      activatedAt: new Date(),
     })
 
+    console.log('Default theme installed successfully:', defaultTheme.themeId)
+    return themeId
+
   } catch (error) {
-    console.error('Theme activation failed:', error)
+    console.error('Failed to install default theme:', error)
     throw error
-  }
-}
-
-function getThemeName(themeId: string): string {
-  const themeNames: Record<string, string> = {
-    default: 'Default Theme',
-    minimal: 'Minimal Theme',
-    business: 'Business Theme',
-    dark: 'Dark Theme',
-  }
-  return themeNames[themeId] || 'Unknown Theme'
-}
-
-function getDefaultThemeCustomization(themeId: string) {
-  return {
-    colors: {
-      primary: '#0066cc',
-      secondary: '#6b7280',
-      accent: '#f59e0b',
-      background: '#ffffff',
-      foreground: '#111827',
-    },
-    typography: {
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        serif: ['Merriweather', 'serif'],
-        mono: ['Fira Code', 'monospace'],
-      },
-    },
-    borderRadius: '0.5rem',
-  }
-}
-
-function getDefaultThemeManifest(themeId: string) {
-  return {
-    id: themeId,
-    name: getThemeName(themeId),
-    version: '1.0.0',
-    description: `Default ${themeId} theme for Modular App`,
-    author: {
-      name: 'Modular App Team',
-      email: 'team@modularapp.com',
-    },
-    license: 'MIT',
-    category: 'minimal',
-    compatibility: {
-      nextjs: '^15.0.0',
-      app: '^1.0.0',
-    },
-    features: ['Responsive design', 'Dark mode support', 'Customizable'],
-    main: 'index.js',
-    layouts: {
-      default: 'layouts/default.tsx',
-      admin: 'layouts/admin.tsx',
-      auth: 'layouts/auth.tsx',
-    },
   }
 }
