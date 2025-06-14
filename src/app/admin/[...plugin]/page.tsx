@@ -1,5 +1,5 @@
-// Dynamic Plugin Admin Route
-// src/app/admin/[...plugin]/page.tsx
+// Update: src/app/admin/[...plugin]/page.tsx
+// Fix to use API calls instead of direct registry access
 
 "use client";
 
@@ -9,7 +9,6 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/admin/admin-sidebar";
 import { AdminHeader } from "@/components/admin/admin-header";
 import { PluginAdminPage } from "@/components/dynamic/plugin-component";
-import { pluginRegistry } from "@/lib/plugins/registry";
 import {
   IconAlertTriangle,
   IconLoader,
@@ -26,6 +25,7 @@ export default function DynamicPluginAdminPage() {
   const [pluginInfo, setPluginInfo] = React.useState<any>(null);
   const [adminPageInfo, setAdminPageInfo] = React.useState<any>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [availablePlugins, setAvailablePlugins] = React.useState<any[]>([]);
 
   // Parse the route params
   // Route structure: /admin/oauth-settings or /admin/plugin-name/page-name
@@ -42,36 +42,47 @@ export default function DynamicPluginAdminPage() {
       setLoading(true);
       setError(null);
 
-      // Wait for plugin registry to be ready
-      await waitForPluginRegistry();
+      console.log(`🔍 Looking for plugin admin page: /${pluginPath.join("/")}`);
 
-      // Get all active plugins
-      const activePlugins = pluginRegistry.getActivePlugins();
+      // FIXED: Get plugin data from API instead of direct registry access
+      const pluginData = await fetchPluginDataFromAPI();
 
-      if (activePlugins.length === 0) {
+      if (pluginData.length === 0) {
         throw new Error("No active plugins found");
       }
+
+      setAvailablePlugins(pluginData);
 
       // Find the plugin and admin page that matches the route
       let foundPlugin = null;
       let foundAdminPage = null;
 
+      const routeString = `/${pluginPath.join("/")}`;
+      console.log(`🔎 Searching for route: ${routeString}`);
+
       // Check each active plugin for matching admin pages
-      for (const plugin of activePlugins) {
-        if (!plugin.adminPages) continue;
+      for (const plugin of pluginData) {
+        if (!plugin.manifest.adminPages) continue;
 
-        for (const [pagePath, pageInfo] of plugin.adminPages) {
+        console.log(`🔍 Checking plugin: ${plugin.manifest.id}`);
+        console.log(`   Admin pages:`, plugin.manifest.adminPages);
+
+        for (const adminPage of plugin.manifest.adminPages) {
+          const pagePath = adminPage.path;
+
+          console.log(
+            `   🔎 Checking page path: ${pagePath} vs ${routeString}`
+          );
+
           // Check if the route matches this admin page
-          // Routes can be: /oauth-settings, /plugin-name/page-name, etc.
-          const routeString = `/${pluginPath.join("/")}`;
-
           if (
             pagePath === routeString ||
             pagePath === `/${pluginPath[0]}` ||
             (pluginPath.length === 1 && pagePath.endsWith(pluginPath[0]))
           ) {
             foundPlugin = plugin;
-            foundAdminPage = pageInfo;
+            foundAdminPage = adminPage;
+            console.log(`✅ Found match: ${plugin.manifest.id} -> ${pagePath}`);
             break;
           }
         }
@@ -79,34 +90,28 @@ export default function DynamicPluginAdminPage() {
         if (foundPlugin) break;
       }
 
-      if (!foundPlugin || !foundAdminPage) {
-        // Try to find by plugin ID if direct match fails
-        const possiblePluginId = pluginPath[0];
-        const possiblePagePath = pluginPath.slice(1).join("/") || "index";
+      // If no exact match, try fuzzy matching
+      if (!foundPlugin) {
+        console.log(`🔍 No exact match, trying fuzzy matching...`);
 
-        foundPlugin = activePlugins.find(
+        const possiblePluginId = pluginPath[0];
+        console.log(`   Possible plugin ID: ${possiblePluginId}`);
+
+        foundPlugin = pluginData.find(
           (p) =>
             p.manifest.id === possiblePluginId ||
             p.manifest.id.includes(possiblePluginId) ||
             possiblePluginId.includes(p.manifest.id.split("-")[0])
         );
 
-        if (foundPlugin && foundPlugin.adminPages) {
-          // Look for the specific page or default page
-          for (const [pagePath, pageInfo] of foundPlugin.adminPages) {
-            if (
-              pagePath.includes(possiblePagePath) ||
-              pagePath.includes(pluginPath[0])
-            ) {
-              foundAdminPage = pageInfo;
-              break;
-            }
-          }
+        if (foundPlugin && foundPlugin.manifest.adminPages) {
+          console.log(
+            `✅ Found plugin via fuzzy match: ${foundPlugin.manifest.id}`
+          );
 
-          // If no specific page found, use the first admin page
-          if (!foundAdminPage && foundPlugin.adminPages.size > 0) {
-            foundAdminPage = Array.from(foundPlugin.adminPages.values())[0];
-          }
+          // Use the first admin page or find matching page
+          foundAdminPage = foundPlugin.manifest.adminPages[0];
+          console.log(`   Using admin page: ${foundAdminPage.title}`);
         }
       }
 
@@ -120,35 +125,53 @@ export default function DynamicPluginAdminPage() {
         );
       }
 
+      console.log(`🎉 Successfully found plugin admin page:`);
+      console.log(`   Plugin: ${foundPlugin.manifest.name}`);
+      console.log(`   Page: ${foundAdminPage.title}`);
+
       setPluginInfo(foundPlugin);
       setAdminPageInfo(foundAdminPage);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      console.error("Plugin admin page routing error:", err);
+      console.error("❌ Plugin admin page routing error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const waitForPluginRegistry = async (timeout = 10000) => {
-    const startTime = Date.now();
+  // FIXED: Fetch plugin data from API instead of using registry
+  const fetchPluginDataFromAPI = async () => {
+    try {
+      console.log("📡 Fetching plugin data from API...");
 
-    return new Promise<void>((resolve, reject) => {
-      const checkReady = () => {
-        if (
-          pluginRegistry &&
-          typeof pluginRegistry.getActivePlugins === "function"
-        ) {
-          resolve();
-        } else if (Date.now() - startTime > timeout) {
-          reject(new Error("Plugin registry timeout"));
-        } else {
-          setTimeout(checkReady, 100);
-        }
-      };
-      checkReady();
-    });
+      const response = await fetch("/api/admin/plugins");
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data?.plugins) {
+        // Filter for active plugins with admin pages
+        const activePluginsWithAdminPages = data.data.plugins.filter(
+          (plugin) =>
+            plugin.isActive && plugin.manifest && plugin.manifest.adminPages
+        );
+
+        console.log(
+          `✅ Found ${activePluginsWithAdminPages.length} active plugins with admin pages`
+        );
+
+        return activePluginsWithAdminPages;
+      } else {
+        throw new Error(data.error || "Invalid API response");
+      }
+    } catch (error) {
+      console.error("❌ Failed to fetch plugin data:", error);
+      throw error;
+    }
   };
 
   if (loading) {
@@ -212,9 +235,12 @@ export default function DynamicPluginAdminPage() {
                   Available Plugin Admin Pages
                 </h3>
                 <div className="space-y-2">
-                  {pluginRegistry
-                    .getActivePlugins()
-                    .filter((p) => p.adminPages && p.adminPages.size > 0)
+                  {availablePlugins
+                    .filter(
+                      (p) =>
+                        p.manifest.adminPages &&
+                        p.manifest.adminPages.length > 0
+                    )
                     .map((plugin) => (
                       <div
                         key={plugin.manifest.id}
@@ -227,25 +253,39 @@ export default function DynamicPluginAdminPage() {
                           <Badge variant="outline">{plugin.manifest.id}</Badge>
                         </div>
                         <div className="space-y-1">
-                          {Array.from(plugin.adminPages!.entries()).map(
-                            ([pagePath, pageInfo]) => (
-                              <div key={pagePath} className="text-sm">
-                                <Button
-                                  variant="link"
-                                  size="sm"
-                                  className="h-auto p-0 text-left"
-                                  onClick={() =>
-                                    router.push(`/admin${pagePath}`)
-                                  }
-                                >
-                                  {pageInfo.title} ({pagePath})
-                                </Button>
-                              </div>
-                            )
-                          )}
+                          {plugin.manifest.adminPages.map((adminPage: any) => (
+                            <div key={adminPage.path} className="text-sm">
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="h-auto p-0 text-left"
+                                onClick={() =>
+                                  router.push(`/admin${adminPage.path}`)
+                                }
+                              >
+                                {adminPage.title} ({adminPage.path})
+                              </Button>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ))}
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <h3 className="text-lg font-medium mb-3">Debug Information</h3>
+                <div className="text-sm bg-muted p-3 rounded-lg">
+                  <div>Requested route: /{pluginPath.join("/")}</div>
+                  <div>Active plugins: {availablePlugins.length}</div>
+                  <div>
+                    Plugins with admin pages:{" "}
+                    {
+                      availablePlugins.filter(
+                        (p) => p.manifest.adminPages?.length > 0
+                      ).length
+                    }
+                  </div>
                 </div>
               </div>
             </div>
@@ -294,14 +334,7 @@ export default function DynamicPluginAdminPage() {
           <div className="flex-1">
             <PluginAdminPage
               pluginId={pluginInfo.manifest.id}
-              pagePath={
-                Object.keys(Object.fromEntries(pluginInfo.adminPages)).find(
-                  (path) =>
-                    Array.from(pluginInfo.adminPages.values()).includes(
-                      adminPageInfo
-                    )
-                ) || "/"
-              }
+              pagePath={adminPageInfo.path}
               pageInfo={adminPageInfo}
               plugin={pluginInfo}
             />
