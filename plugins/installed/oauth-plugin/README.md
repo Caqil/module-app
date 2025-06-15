@@ -1,3 +1,0 @@
-# OAuth Plugin
-
-Plugin documentation
