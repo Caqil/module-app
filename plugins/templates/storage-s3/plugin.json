@@ -1,0 +1,215 @@
+{
+  "id": "s3-storage",
+  "name": "S3 Storage Manager",
+  "version": "1.0.0",
+  "description": "Complete AWS S3 storage integration with file management, upload/download, and storage analytics",
+  "author": {
+    "name": "Storage Plugin Developer",
+    "email": "developer@example.com"
+  },
+  "license": "MIT",
+  "category": "utility",
+  "tags": ["storage", "s3", "aws", "file-management", "cloud"],
+  "requirements": {
+    "nextjs": ">=14.0.0",
+    "node": ">=18.0.0"
+  },
+  "permissions": [
+    "admin:access",
+    "database:read",
+    "database:write",
+    "files:read",
+    "files:write",
+    "settings:read",
+    "settings:write",
+    "api:create"
+  ],
+  "entry": {
+    "main": "index.js"
+  },
+  "adminPages": [
+    {
+      "path": "/s3-storage",
+      "title": "S3 Storage",
+      "icon": "Cloud",
+      "component": "admin/storage-manager.jsx",
+      "permissions": ["admin:access"]
+    },
+    {
+      "path": "/s3-settings",
+      "title": "S3 Settings",
+      "icon": "Settings",
+      "component": "admin/s3-settings.jsx",
+      "permissions": ["admin:access"]
+    }
+  ],
+  "dashboardWidgets": [
+    {
+      "id": "s3-storage-stats",
+      "title": "Storage Usage",
+      "component": "widgets/storage-stats.jsx",
+      "size": "medium",
+      "category": "storage"
+    },
+    {
+      "id": "s3-recent-uploads",
+      "title": "Recent Uploads",
+      "component": "widgets/recent-uploads.jsx",
+      "size": "medium",
+      "category": "storage"
+    }
+  ],
+  "routes": [
+    {
+      "path": "/s3/upload",
+      "method": "POST",
+      "handler": "upload.js",
+      "permissions": ["files:write"]
+    },
+    {
+      "path": "/s3/download/:key",
+      "method": "GET",
+      "handler": "download.js",
+      "permissions": ["files:read"]
+    },
+    {
+      "path": "/s3/delete/:key",
+      "method": "DELETE",
+      "handler": "delete.js",
+      "permissions": ["files:write"]
+    },
+    {
+      "path": "/s3/list",
+      "method": "GET",
+      "handler": "list.js",
+      "permissions": ["files:read"]
+    },
+    {
+      "path": "/s3/stats",
+      "method": "GET",
+      "handler": "stats.js",
+      "permissions": ["admin:access"]
+    },
+    {
+      "path": "/s3/config",
+      "method": "GET",
+      "handler": "config.js",
+      "permissions": ["admin:access"]
+    },
+    {
+      "path": "/s3/config",
+      "method": "PUT",
+      "handler": "config.js",
+      "permissions": ["admin:access"]
+    },
+    {
+      "path": "/s3/test-connection",
+      "method": "POST",
+      "handler": "test-connection.js",
+      "permissions": ["admin:access"]
+    }
+  ],
+  "settings": {
+    "schema": {
+      "enabled": {
+        "type": "boolean",
+        "title": "Enable S3 Storage",
+        "description": "Enable or disable S3 storage functionality",
+        "default": false,
+        "required": true
+      },
+      "accessKey": {
+        "type": "string",
+        "title": "AWS Access Key ID",
+        "description": "Your AWS access key ID",
+        "required": false
+      },
+      "secretKey": {
+        "type": "string",
+        "title": "AWS Secret Access Key",
+        "description": "Your AWS secret access key",
+        "required": false
+      },
+      "bucketName": {
+        "type": "string",
+        "title": "S3 Bucket Name",
+        "description": "Name of your S3 bucket",
+        "required": false
+      },
+      "region": {
+        "type": "select",
+        "title": "AWS Region",
+        "description": "AWS region where your bucket is located",
+        "default": "us-east-1",
+        "options": [
+          {"label": "US East (N. Virginia)", "value": "us-east-1"},
+          {"label": "US East (Ohio)", "value": "us-east-2"},
+          {"label": "US West (Oregon)", "value": "us-west-2"},
+          {"label": "US West (N. California)", "value": "us-west-1"},
+          {"label": "EU (Ireland)", "value": "eu-west-1"},
+          {"label": "EU (London)", "value": "eu-west-2"},
+          {"label": "EU (Frankfurt)", "value": "eu-central-1"},
+          {"label": "Asia Pacific (Tokyo)", "value": "ap-northeast-1"},
+          {"label": "Asia Pacific (Singapore)", "value": "ap-southeast-1"},
+          {"label": "Asia Pacific (Sydney)", "value": "ap-southeast-2"}
+        ]
+      },
+      "publicRead": {
+        "type": "boolean",
+        "title": "Public Read Access",
+        "description": "Allow public read access to uploaded files",
+        "default": false
+      },
+      "maxFileSize": {
+        "type": "number",
+        "title": "Max File Size (MB)",
+        "description": "Maximum file size for uploads in megabytes",
+        "default": 10,
+        "validation": {
+          "min": 1,
+          "max": 100
+        }
+      },
+      "allowedTypes": {
+        "type": "multiselect",
+        "title": "Allowed File Types",
+        "description": "File types allowed for upload",
+        "default": ["image/jpeg", "image/png", "image/gif", "application/pdf"],
+        "options": [
+          {"label": "JPEG Images", "value": "image/jpeg"},
+          {"label": "PNG Images", "value": "image/png"},
+          {"label": "GIF Images", "value": "image/gif"},
+          {"label": "PDF Documents", "value": "application/pdf"},
+          {"label": "Word Documents", "value": "application/msword"},
+          {"label": "Text Files", "value": "text/plain"},
+          {"label": "Video MP4", "value": "video/mp4"},
+          {"label": "Audio MP3", "value": "audio/mpeg"}
+        ]
+      },
+      "folderStructure": {
+        "type": "string",
+        "title": "Folder Structure",
+        "description": "Folder structure pattern (use {year}, {month}, {day})",
+        "default": "uploads/{year}/{month}"
+      }
+    },
+    "defaults": {
+      "enabled": false,
+      "accessKey": "",
+      "secretKey": "",
+      "bucketName": "",
+      "region": "us-east-1",
+      "publicRead": false,
+      "maxFileSize": 10,
+      "allowedTypes": ["image/jpeg", "image/png", "image/gif", "application/pdf"],
+      "folderStructure": "uploads/{year}/{month}"
+    }
+  },
+  "dependencies": {
+    "packages": {
+      "aws-sdk": "^2.1490.0",
+      "multer": "^1.4.5-lts.1",
+      "mime-types": "^2.1.35"
+    }
+  }
+}

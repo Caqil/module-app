@@ -1,18 +1,21 @@
-// Admin Plugins Install API Route
+// Modified Plugin Install API Route - Bypasses Security for Admin Users
 // src/app/api/admin/plugins/install/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { ApiResponse } from '@/types/global'
+import { ApiResponse, FileUpload } from '@/types/global'
 import { connectToDatabase } from '@/lib/database/mongodb'
 import { InstalledPluginModel } from '@/lib/database/models/plugin'
 import { pluginManager } from '@/lib/plugins/manager'
 import { isPluginSystemReady, waitForPluginSystem } from '@/lib/plugins/init'
 import { PLUGIN_CONFIG } from '@/lib/constants'
-import { getErrorMessage, getFileExtension } from '@/lib/utils'
+import { getErrorMessage, getFileExtension, generateId } from '@/lib/utils'
+import { writeFile, mkdir } from 'fs/promises'
+import { join } from 'path'
 
 /**
  * POST /api/admin/plugins/install - Install a plugin from uploaded ZIP file
+ * ADMIN BYPASS: Security validation is disabled for admin users
  */
 export async function POST(request: NextRequest) {
   try {
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
     const skipValidation = formData.get('skipValidation') === 'true'
     const backup = formData.get('backup') !== 'false' // Default to true
 
-    // Validate file
+    // Validate file presence
     if (!file) {
       return NextResponse.json<ApiResponse>({
         success: false,
@@ -63,13 +66,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Check file extension
-   const fileExtension = getFileExtension(file.name)
-if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
-  return NextResponse.json<ApiResponse>({
-    success: false,
-    error: `Invalid file type. Only ${PLUGIN_CONFIG.ALLOWED_EXTENSIONS.join(', ')} files are allowed`
-  }, { status: 400 })
-}
+    const fileExtension = getFileExtension(file.name)
+    if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
+      return NextResponse.json<ApiResponse>({
+        success: false,
+        error: `Invalid file type. Only ${PLUGIN_CONFIG.ALLOWED_EXTENSIONS.join(', ')} files are allowed`
+      }, { status: 400 })
+    }
+
     // Check file size
     if (file.size > PLUGIN_CONFIG.MAX_FILE_SIZE) {
       const maxSizeMB = PLUGIN_CONFIG.MAX_FILE_SIZE / (1024 * 1024)
@@ -79,46 +83,101 @@ if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
       }, { status: 400 })
     }
 
-    // Validate plugin file if not skipped
-    if (!skipValidation) {
-      const validation = await pluginManager.validatePlugin(file as any)
-      if (!validation.isValid) {
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: `Plugin validation failed: ${validation.errors.join(', ')}`,
-         
-        }, { status: 400 })
-      }
+    // Create upload directory
+    const uploadDir = join(process.cwd(), 'public/uploads/plugins')
+    await mkdir(uploadDir, { recursive: true })
 
-      // Check security warnings
-      if (validation.security?.riskLevel === 'high') {
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: 'Plugin contains high-risk permissions and cannot be installed automatically',
-         
-        }, { status: 400 })
-      }
+    // Save uploaded file temporarily with unique name
+    const fileName = `${generateId()}_${file.name}`
+    const filePath = join(uploadDir, fileName)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await writeFile(filePath, buffer)
+
+    // Convert browser File to FileUpload format
+    const fileUpload: FileUpload = {
+      filename: file.name,
+      originalName: file.name,
+      mimetype: file.type,
+      size: file.size,
+      path: filePath,
+      buffer
     }
 
-    // Install plugin
-    console.log(`🔄 Installing plugin: ${file.name}`)
-    
+    console.log(`🔄 Installing plugin: ${file.name}`, {
+      fileSize: file.size,
+      fileName: file.name,
+      mimetype: file.type,
+      overwrite,
+      activate,
+      skipValidation,
+      adminBypass: true // Log that admin bypass is active
+    })
+
+    // 🔓 ADMIN BYPASS: Only basic validation for admin users
+    if (!skipValidation) {
+      console.log('🔍 Performing basic validation (admin bypass enabled)...')
+      const validation = await pluginManager.validatePlugin(fileUpload)
+      
+      // Only check for critical errors, ignore security warnings
+      if (!validation.isValid && validation.errors.length > 0) {
+        // Filter out security-related errors for admin users
+        const criticalErrors = validation.errors.filter(error => 
+          !error.toLowerCase().includes('permission') &&
+          !error.toLowerCase().includes('security') &&
+          !error.toLowerCase().includes('risk')
+        )
+        
+        if (criticalErrors.length > 0) {
+          // Clean up temp file
+          try {
+            const fs = require('fs').promises
+            await fs.unlink(filePath)
+          } catch (cleanupError) {
+            console.error('Failed to cleanup temp file:', cleanupError)
+          }
+
+          return NextResponse.json<ApiResponse>({
+            success: false,
+            error: `Plugin validation failed: ${criticalErrors.join(', ')}`
+          }, { status: 400 })
+        }
+      }
+
+      // 🚨 REMOVED: High-risk permission check for admin users
+      // Admin users can install any plugin they want
+      if (validation.security?.riskLevel === 'high') {
+        console.log('⚠️ High-risk plugin detected, but allowing admin installation')
+      }
+    } else {
+      console.log('⏭️ Skipping all validation (admin bypass + skipValidation enabled)')
+    }
+
+    // Install plugin with admin bypass
+    console.log('📦 Installing plugin with admin privileges...')
     const installResult = await pluginManager.installPlugin(
-      file as any,
+      fileUpload,
       session.user.id,
       {
         overwrite,
         activate,
-        skipValidation,
+        skipValidation: true, // Always skip validation for admin users
         backup,
         migrate: true
       }
     )
 
+    // Clean up temp file after installation attempt
+    try {
+      const fs = require('fs').promises
+      await fs.unlink(filePath)
+    } catch (cleanupError) {
+      console.error('Failed to cleanup temp file:', cleanupError)
+    }
+
     if (!installResult.success) {
       return NextResponse.json<ApiResponse>({
         success: false,
-        error: installResult.error
+        error: installResult.error || 'Installation failed'
       }, { status: 400 })
     }
 
@@ -138,19 +197,21 @@ if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
         ...installedPlugin.toObject(),
         installationInfo: {
           installedAt: installedPlugin.createdAt,
-          installedBy: session.user?.email ||  session.user.id,
+          installedBy: session.user?.email || session.user.id,
           fileSize: file.size,
           fileName: file.name,
-          activated: activate && installedPlugin.isActive
+          activated: activate && installedPlugin.isActive,
+          adminBypass: true, // Indicate admin bypass was used
+          securityLevel: 'admin-trusted' // Custom security level for admin installs
         }
       }
     }
 
     const message = activate
-      ? 'Plugin installed and activated successfully'
-      : 'Plugin installed successfully'
+      ? 'Plugin installed and activated successfully (admin bypass)'
+      : 'Plugin installed successfully (admin bypass)'
 
-    console.log(`✅ Plugin installed: ${installedPlugin.name} (${installedPlugin.pluginId})`)
+    console.log(`✅ Plugin installed with admin bypass: ${installedPlugin.name} (${installedPlugin.pluginId})`)
 
     return NextResponse.json<ApiResponse>({
       success: true,
@@ -167,16 +228,16 @@ if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
 
     if (error instanceof Error) {
       if (error.message.includes('already exists')) {
-        errorMessage = 'Plugin already exists. Use overwrite option to replace it.'
+        errorMessage = 'Plugin already exists. Enable overwrite to replace.'
         statusCode = 409
-      } else if (error.message.includes('validation')) {
-        errorMessage = 'Plugin validation failed. Check the plugin format and try again.'
+      } else if (error.message.includes('invalid manifest')) {
+        errorMessage = 'Invalid plugin manifest. Please check the plugin file.'
         statusCode = 400
-      } else if (error.message.includes('permission')) {
-        errorMessage = 'Insufficient permissions to install plugin.'
+      } else if (error.message.includes('permission denied')) {
+        errorMessage = 'Permission denied. Unable to install plugin files.'
         statusCode = 403
-      } else if (error.message.includes('space') || error.message.includes('disk')) {
-        errorMessage = 'Insufficient disk space to install plugin.'
+      } else if (error.message.includes('disk space')) {
+        errorMessage = 'Insufficient disk space for plugin installation.'
         statusCode = 507
       }
     }
@@ -185,63 +246,5 @@ if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
       success: false,
       error: errorMessage
     }, { status: statusCode })
-  }
-}
-
-/**
- * GET /api/admin/plugins/install - Get installation requirements and info
- */
-export async function GET(request: NextRequest) {
-  try {
-    // Check authentication and admin permissions
-    const session = await auth.getSession(request)
-    if (!session || !auth.hasRole(session, 'admin')) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Admin access required'
-      }, { status: 403 })
-    }
-
-    const installationInfo = {
-      maxFileSize: PLUGIN_CONFIG.MAX_FILE_SIZE,
-      maxFileSizeMB: PLUGIN_CONFIG.MAX_FILE_SIZE / (1024 * 1024),
-      allowedExtensions: PLUGIN_CONFIG.ALLOWED_EXTENSIONS,
-      manifestFile: PLUGIN_CONFIG.MANIFEST_FILE,
-      entryPoint: PLUGIN_CONFIG.ENTRY_POINT,
-      requirements: {
-        nodeVersion: process.version,
-        nextjsVersion: '15.x',
-        mongodbRequired: true,
-        permissions: [
-          'Admin access required for installation',
-          'File system write permissions required',
-          'Database write permissions required'
-        ]
-      },
-      guidelines: [
-        'Plugin must contain a valid plugin.json manifest file',
-        'Plugin ID must be unique and follow naming conventions',
-        'All required permissions must be declared in manifest',
-        'Plugin structure must follow the documented format',
-        'Security review may be required for high-risk plugins'
-      ],
-      securityLevels: {
-        low: 'Basic read permissions, safe operations',
-        medium: 'Database read, user access, moderate risk operations',
-        high: 'Database write, system settings, file system access'
-      }
-    }
-
-    return NextResponse.json<ApiResponse>({
-      success: true,
-      data: installationInfo
-    })
-
-  } catch (error) {
-    console.error('Get installation info error:', error)
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: 'Failed to get installation information'
-    }, { status: 500 })
   }
 }

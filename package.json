@@ -16,7 +16,9 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "build:analyze": "ANALYZE=true npm run build",
-    "clean": "rm -rf .next out dist build"
+    "clean": "rm -rf .next out dist build",
+    "plugin:create": "node scripts/generate-plugin.js",
+    "plugin:help": "echo 'Use: npm run plugin:create to generate a new plugin template'"
   },
   "dependencies": {
     "@commitlint/config-conventional": "^19.8.1",
