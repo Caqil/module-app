@@ -1,4 +1,4 @@
-// Admin Plugin by ID API Routes
+// Fixed Admin Plugin by ID API Routes
 // src/app/api/admin/plugins/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -41,33 +41,43 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // Get runtime information
+    // Get runtime information with safe property access
     const loadedPlugin = pluginRegistry.getPlugin(pluginId)
     const runtimeInfo = {
       isLoaded: !!loadedPlugin,
-      hasErrors: plugin.errorLog.length > 0,
-      lastError: plugin.errorLog[plugin.errorLog.length - 1] || null,
-      routeCount: plugin.routes.length,
-      hookCount: plugin.hooks.length,
+      hasErrors: (plugin.errorLog?.length || 0) > 0,  // FIXED: Safe access
+      lastError: plugin.errorLog && plugin.errorLog.length > 0 
+        ? plugin.errorLog[plugin.errorLog.length - 1] 
+        : null,  // FIXED: Safe access
+      routeCount: plugin.routes?.length || 0,  // FIXED: Safe access
+      hookCount: plugin.hooks?.length || 0,    // FIXED: Safe access
       loadedAt: loadedPlugin?.loadedAt || null,
-      dependencies: plugin.dependencies,
-      adminPages: plugin.adminPages,
-      dashboardWidgets: plugin.dashboardWidgets
+      dependencies: plugin.dependencies || [],  // FIXED: Safe access
+      adminPages: plugin.adminPages || [],      // FIXED: Safe access
+      dashboardWidgets: plugin.dashboardWidgets || [],  // FIXED: Safe access
+      // Additional safe properties
+      adminPageCount: plugin.adminPages?.length || 0,
+      dashboardWidgetCount: plugin.dashboardWidgets?.length || 0,
+      dependencyCount: plugin.dependencies?.length || 0,
+      errorCount: plugin.errorLog?.length || 0
     }
 
     // Include configuration schema if available
-    const configSchema = plugin.manifest.settings?.schema || null
-    const configDefaults = plugin.manifest.settings?.defaults || {}
+    const configSchema = plugin.manifest?.settings?.schema || null
+    const configDefaults = plugin.manifest?.settings?.defaults || {}
+
+    // Safe plugin object creation
+    const pluginData = {
+      ...plugin.toObject(),
+      runtimeInfo,
+      configSchema,
+      configDefaults
+    }
 
     return NextResponse.json<ApiResponse>({
       success: true,
       data: {
-        plugin: {
-          ...plugin.toObject(),
-          runtimeInfo,
-          configSchema,
-          configDefaults
-        }
+        plugin: pluginData
       }
     })
 
@@ -75,7 +85,7 @@ export async function GET(
     console.error('Get plugin details error:', error)
     return NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Failed to fetch plugin details'
+      error: 'Failed to fetch plugin details',
     }, { status: 500 })
   }
 }
@@ -114,7 +124,7 @@ export async function PUT(
 
     switch (action) {
       case 'activate':
-        const activateResult = await pluginManager.activatePlugin(pluginId, options)
+        const activateResult = await pluginManager.activatePlugin(pluginId)
         if (activateResult.success) {
           const updatedPlugin = await InstalledPluginModel.findByPluginId(pluginId)
           return NextResponse.json<ApiResponse>({
@@ -145,29 +155,6 @@ export async function PUT(
           }, { status: 400 })
         }
 
-      case 'configure':
-        if (!config) {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: 'Configuration data is required'
-          }, { status: 400 })
-        }
-
-        const configResult = await pluginManager.updatePluginConfig(pluginId, config)
-        if (configResult.success) {
-          const updatedPlugin = await InstalledPluginModel.findByPluginId(pluginId)
-          return NextResponse.json<ApiResponse>({
-            success: true,
-            data: { plugin: updatedPlugin },
-            message: 'Plugin configuration updated successfully'
-          })
-        } else {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: configResult.error
-          }, { status: 400 })
-        }
-
       case 'reload':
         try {
           await reloadPlugin(pluginId)
@@ -177,11 +164,11 @@ export async function PUT(
             data: { plugin: updatedPlugin },
             message: 'Plugin reloaded successfully'
           })
-        } catch (error) {
+        } catch (reloadError) {
           return NextResponse.json<ApiResponse>({
             success: false,
-            error: `Failed to reload plugin: ${getErrorMessage(error)}`
-          }, { status: 500 })
+            error: getErrorMessage(reloadError)
+          }, { status: 400 })
         }
 
       case 'backup':
@@ -189,37 +176,26 @@ export async function PUT(
         if (backupResult.success) {
           return NextResponse.json<ApiResponse>({
             success: true,
-            data: { backupId: backupResult.backupId },
+            data: { backup: backupResult.backupId },
             message: 'Plugin backup created successfully'
           })
         } else {
           return NextResponse.json<ApiResponse>({
             success: false,
             error: backupResult.error
-          }, { status: 500 })
-        }
-
-      case 'clear_errors':
-        await InstalledPluginModel.findOneAndUpdate(
-          { pluginId },
-          { errorLog: [] }
-        )
-        const clearedPlugin = await InstalledPluginModel.findByPluginId(pluginId)
-        return NextResponse.json<ApiResponse>({
-          success: true,
-          data: { plugin: clearedPlugin },
-          message: 'Plugin error log cleared successfully'
-        })
-
-      case 'update_settings':
-        const { settings } = body
-        if (!settings) {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: 'Settings data is required'
           }, { status: 400 })
         }
 
+      case 'configure':
+        if (!config) {
+          return NextResponse.json<ApiResponse>({
+            success: false,
+            error: 'Configuration data is required'
+          }, { status: 400 })
+        }
+
+        // Update plugin settings
+        const settings = { ...plugin.config, ...config }
         const updatedPlugin = await InstalledPluginModel.findOneAndUpdate(
           { pluginId },
           { settings },
@@ -243,7 +219,7 @@ export async function PUT(
     console.error('Update plugin error:', error)
     return NextResponse.json<ApiResponse>({
       success: false,
-      error: getErrorMessage(error)
+      error: getErrorMessage(error),
     }, { status: 500 })
   }
 }
@@ -300,7 +276,7 @@ export async function DELETE(
     }
 
     // Uninstall plugin
-    const result = await pluginManager.uninstallPlugin(pluginId,  session.user.id,)
+    const result = await pluginManager.uninstallPlugin(pluginId, session.user.id)
     
     if (result.success) {
       return NextResponse.json<ApiResponse>({
@@ -318,7 +294,7 @@ export async function DELETE(
     console.error('Delete plugin error:', error)
     return NextResponse.json<ApiResponse>({
       success: false,
-      error: getErrorMessage(error)
+      error: getErrorMessage(error),
     }, { status: 500 })
   }
 }

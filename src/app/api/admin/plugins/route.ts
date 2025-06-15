@@ -1,10 +1,10 @@
-// Admin Plugins API Routes
+// Fixed Admin Plugins API Route
 // src/app/api/admin/plugins/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { ApiResponse } from '@/types/global'
-import { connectToDatabase } from '@/lib/database/mongodb'
+import { connectToDatabase, isHealthy } from '@/lib/database/mongodb'
 import { InstalledPluginModel } from '@/lib/database/models/plugin'
 import { pluginManager } from '@/lib/plugins/manager'
 import { pluginRegistry } from '@/lib/plugins/registry'
@@ -26,6 +26,39 @@ export async function GET(request: NextRequest) {
       }, { status: 403 })
     }
 
+    // Handle health check requests
+    const url = new URL(request.url)
+    if (url.searchParams.get('check') === 'true') {
+      // Simple health check for plugin system readiness
+      try {
+        await connectToDatabase()
+        const dbHealthy = await isHealthy()
+        if (!dbHealthy) {
+          return NextResponse.json<ApiResponse>({
+            success: false,
+            error: 'Database not healthy'
+          }, { status: 503 })
+        }
+
+        if (!isPluginSystemReady()) {
+          return NextResponse.json<ApiResponse>({
+            success: false,
+            error: 'Plugin system not ready'
+          }, { status: 503 })
+        }
+
+        return NextResponse.json<ApiResponse>({
+          success: true,
+          data: { status: 'ready' }
+        })
+      } catch (error) {
+        return NextResponse.json<ApiResponse>({
+          success: false,
+          error: 'System not ready'
+        }, { status: 503 })
+      }
+    }
+
     // Wait for plugin system to be ready
     if (!isPluginSystemReady()) {
       try {
@@ -40,10 +73,8 @@ export async function GET(request: NextRequest) {
 
     await connectToDatabase()
 
-    // Parse query parameters
-    const url = new URL(request.url)
+    // Parse query parameters with validation
     const queryParams = Object.fromEntries(url.searchParams)
-    
     const validatedParams = paginationSchema.parse(queryParams)
     const { page, limit, sortBy, sortOrder, search } = validatedParams
 
@@ -101,18 +132,51 @@ export async function GET(request: NextRequest) {
     const hasNextPage = page < totalPages
     const hasPrevPage = page > 1
 
-    // Enhance plugins with runtime information
+    // Enhance plugins with runtime information (FIXED VERSION)
     const enhancedPlugins = plugins.map(plugin => {
-      const loadedPlugin = pluginRegistry.getPlugin(plugin.pluginId)
-      return {
-        ...plugin,
-        runtimeInfo: {
+      try {
+        const loadedPlugin = pluginRegistry.getPlugin(plugin.pluginId)
+        
+        // Safe runtime info creation with proper null checks
+        const runtimeInfo = {
           isLoaded: !!loadedPlugin,
-          hasErrors: plugin.errorLog.length > 0,
-          lastError: plugin.errorLog[plugin.errorLog.length - 1] || null,
-          routeCount: plugin.routes.length,
-          hookCount: plugin.hooks.length,
-          loadedAt: loadedPlugin?.loadedAt || null
+          hasErrors: (plugin.errorLog?.length || 0) > 0,
+          lastError: plugin.errorLog && plugin.errorLog.length > 0 
+            ? plugin.errorLog[plugin.errorLog.length - 1] 
+            : null,
+          routeCount: plugin.routes?.length || 0,  // FIXED: Safe access
+          hookCount: plugin.hooks?.length || 0,    // FIXED: Safe access
+          loadedAt: loadedPlugin?.loadedAt || null,
+          // Additional safe properties
+          adminPageCount: plugin.adminPages?.length || 0,
+          dashboardWidgetCount: plugin.dashboardWidgets?.length || 0,
+          dependencyCount: plugin.dependencies?.length || 0,
+          errorCount: plugin.errorLog?.length || 0
+        }
+
+        return {
+          ...plugin,
+          runtimeInfo
+        }
+      } catch (error) {
+        console.error(`Error enhancing plugin ${plugin.pluginId}:`, error)
+        
+        // Return plugin with safe default runtime info
+        return {
+          ...plugin,
+          runtimeInfo: {
+            isLoaded: false,
+            hasErrors: false,
+            lastError: null,
+            routeCount: 0,
+            hookCount: 0,
+            loadedAt: null,
+            adminPageCount: 0,
+            dashboardWidgetCount: 0,
+            dependencyCount: 0,
+            errorCount: 0,
+            error: 'Failed to load runtime info'
+          }
         }
       }
     })
@@ -136,7 +200,7 @@ export async function GET(request: NextRequest) {
     console.error('Get plugins error:', error)
     return NextResponse.json<ApiResponse>({
       success: false,
-      error: 'Failed to fetch plugins'
+      error: 'Failed to fetch plugins',
     }, { status: 500 })
   }
 }
@@ -189,7 +253,7 @@ export async function POST(request: NextRequest) {
       // Install plugin
       const result = await pluginManager.installPlugin(
         file as any,
-         session.user.id,
+        session.user.id,
         { overwrite, activate, backup: true }
       )
 

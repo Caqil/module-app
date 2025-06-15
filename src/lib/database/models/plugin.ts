@@ -1,4 +1,4 @@
-// Plugin Database Model
+// Fixed Plugin Database Model - Removed Duplicate Index
 // src/lib/database/models/plugin.ts
 
 import mongoose, { Schema, Document, Model } from 'mongoose'
@@ -29,7 +29,7 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   pluginId: {
     type: String,
     required: [true, 'Plugin ID is required'],
-    unique: true,
+    unique: true, // This creates the index automatically - no need for manual index
     trim: true,
     match: [/^[a-z0-9-]+$/, 'Plugin ID must be lowercase alphanumeric with hyphens'],
   },
@@ -119,53 +119,30 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
       'settings:write': true,
       'plugins:manage': true,
       'themes:manage': true,
-    } as Record<PluginPermission, boolean>) }],
+    }) }],
   }],
   adminPages: [{
     path: { type: String, required: true },
     title: { type: String, required: true },
-    icon: { type: String, default: 'Package' },
-    component: { type: String, required: true },
+    icon: { type: String },
     permissions: [{ type: String }],
     order: { type: Number, default: 100 },
   }],
   dashboardWidgets: [{
     id: { type: String, required: true },
     title: { type: String, required: true },
-    component: { type: String, required: true },
     size: { type: String, enum: ['small', 'medium', 'large', 'full'], default: 'medium' },
-    permissions: [{ type: String }],
-    configurable: { type: Boolean, default: false },
-    defaultConfig: { type: Schema.Types.Mixed, default: {} },
+    category: { type: String },
+    order: { type: Number, default: 100 },
   }],
-  assets: {
-    css: [{ type: String }],
-    js: [{ type: String }],
-    images: { type: Schema.Types.Mixed, default: {} },
-    fonts: [{ type: String }],
-  },
   dependencies: [{
-    pluginId: { type: String, required: true },
+    name: { type: String, required: true },
     version: { type: String, required: true },
-    required: { type: Boolean, default: true },
+    optional: { type: Boolean, default: false },
   }],
-  database: {
-    collections: [{
-      name: { type: String, required: true },
-      schema: { type: Schema.Types.Mixed, required: true },
-      indexes: [{ type: Schema.Types.Mixed }],
-    }],
-    migrations: [{
-      version: { type: String, required: true },
-      script: { type: String, required: true },
-      applied: { type: Boolean, default: false },
-      appliedAt: { type: Date },
-    }],
-  },
   performance: {
     loadTime: { type: Number, default: 0 },
     memoryUsage: { type: Number, default: 0 },
-    apiCalls: { type: Number, default: 0 },
     lastMeasured: { type: Date, default: Date.now },
   },
   settings: {
@@ -188,8 +165,8 @@ const installedPluginSchema = new Schema<IInstalledPluginDocument>({
   toObject: { virtuals: true },
 })
 
-// Indexes for optimal performance
-installedPluginSchema.index({ pluginId: 1 }, { unique: true })
+// FIXED: Indexes for optimal performance - REMOVED duplicate pluginId index
+// Since `unique: true` on pluginId already creates an index, we don't need to add it manually
 installedPluginSchema.index({ status: 1 })
 installedPluginSchema.index({ isActive: 1 })
 installedPluginSchema.index({ 'manifest.category': 1 })
@@ -221,10 +198,12 @@ installedPluginSchema.virtual('isOutdated').get(function() {
 installedPluginSchema.virtual('runtimeInfo').get(function() {
   return {
     isLoaded: this.isActive,
-    hasErrors: this.errorLog.length > 0,
-    lastError: this.errorLog[this.errorLog.length - 1] || null,
-    routeCount: this.routes.length,
-    hookCount: this.hooks.length,
+    hasErrors: (this.errorLog?.length || 0) > 0,
+    lastError: this.errorLog && this.errorLog.length > 0 
+      ? this.errorLog[this.errorLog.length - 1] 
+      : null,
+    routeCount: this.routes?.length || 0,
+    hookCount: this.hooks?.length || 0,
   }
 })
 
