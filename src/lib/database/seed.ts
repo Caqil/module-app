@@ -3,7 +3,7 @@ import { connectToDatabase } from './mongodb'
 import { UserModel } from './models/user'
 import { SystemSettingsModel } from './models/settings'
 import { InstalledThemeModel } from './models/theme'
-import { InstalledPluginModel } from './models/plugin'
+//import { InstalledPluginModel } from './models/plugin'
 import { DEFAULT_THEME_COLORS } from '@/lib/constants'
 
 export async function seedDatabase(force = false) {
@@ -32,7 +32,7 @@ export async function seedDatabase(force = false) {
         UserModel.deleteMany({}),
         SystemSettingsModel.deleteMany({}),
         InstalledThemeModel.deleteMany({}),
-        InstalledPluginModel.deleteMany({}),
+        //InstalledPluginModel.deleteMany({}),
       ])
     }
 
@@ -170,169 +170,12 @@ export async function seedDatabase(force = false) {
       { activeTheme: defaultTheme.themeId }
     )
 
-    // Seed sample plugins
-    console.log('🔌 Seeding sample plugins...')
-    await InstalledPluginModel.insertMany([
-      {
-        pluginId: 'analytics-plugin',
-        name: 'Analytics Plugin',
-        version: '1.2.0',
-        status: 'installed',
-        config: {
-          trackingId: 'GA-XXXXXXXXX',
-          enableRealtime: true,
-          trackEvents: ['click', 'scroll', 'form_submit'],
-        },
-        installPath: '/plugins/analytics-plugin',
-        isActive: true,
-        manifest: {
-          id: 'analytics-plugin',
-          name: 'Analytics Plugin',
-          version: '1.2.0',
-          description: 'Comprehensive analytics and tracking solution',
-          author: {
-            name: 'Analytics Team',
-            email: 'analytics@modularapp.com',
-          },
-          license: 'MIT',
-          category: 'analytics',
-          compatibility: {
-            nextjs: '^15.0.0',
-            app: '^1.0.0',
-          },
-          permissions: ['database:read', 'users:read', 'settings:read'],
-          main: 'index.js',
-          routes: [
-            {
-              path: '/analytics/data',
-              method: 'GET',
-              handler: 'routes/data.js',
-            },
-          ],
-          adminPages: [
-            {
-              path: '/analytics',
-              title: 'Analytics',
-              icon: 'BarChart3',
-              component: 'admin/analytics.tsx',
-            },
-          ],
-          dashboardWidgets: [
-            {
-              id: 'visitor-stats',
-              title: 'Visitor Statistics',
-              component: 'widgets/visitor-stats.tsx',
-              size: 'medium',
-            },
-          ],
-        },
-        installedBy: adminUser._id.toString(),
-        lastActivated: new Date(),
-      },
-      {
-        pluginId: 'backup-plugin',
-        name: 'Backup & Restore',
-        version: '2.1.0',
-        status: 'installed',
-        config: {
-          schedule: 'daily',
-          retention: 30,
-          storage: 'local',
-          compression: true,
-        },
-        installPath: '/plugins/backup-plugin',
-        isActive: false,
-        manifest: {
-          id: 'backup-plugin',
-          name: 'Backup & Restore',
-          version: '2.1.0',
-          description: 'Automated backup and restore functionality',
-          author: {
-            name: 'Backup Team',
-            email: 'backup@modularapp.com',
-          },
-          license: 'MIT',
-          category: 'utility',
-          compatibility: {
-            nextjs: '^15.0.0',
-            app: '^1.0.0',
-          },
-          permissions: ['database:read', 'database:write', 'files:read', 'files:write'],
-          main: 'index.js',
-          adminPages: [
-            {
-              path: '/backup',
-              title: 'Backup & Restore',
-              icon: 'Archive',
-              component: 'admin/backup.tsx',
-            },
-          ],
-        },
-        installedBy: adminUser._id.toString(),
-      },
-      {
-        pluginId: 'seo-plugin',
-        name: 'SEO Optimizer',
-        version: '1.5.0',
-        status: 'installed',
-        config: {
-          autoSitemap: true,
-          metaAnalysis: true,
-          keywordTracking: ['nextjs', 'modular', 'web app'],
-        },
-        installPath: '/plugins/seo-plugin',
-        isActive: true,
-        manifest: {
-          id: 'seo-plugin',
-          name: 'SEO Optimizer',
-          version: '1.5.0',
-          description: 'Complete SEO optimization and analysis tools',
-          author: {
-            name: 'SEO Team',
-            email: 'seo@modularapp.com',
-          },
-          license: 'MIT',
-          category: 'content',
-          compatibility: {
-            nextjs: '^15.0.0',
-            app: '^1.0.0',
-          },
-          permissions: ['database:read', 'settings:write', 'files:write'],
-          main: 'index.js',
-          routes: [
-            {
-              path: '/sitemap.xml',
-              method: 'GET',
-              handler: 'routes/sitemap.js',
-            },
-          ],
-          adminPages: [
-            {
-              path: '/seo',
-              title: 'SEO Tools',
-              icon: 'Search',
-              component: 'admin/seo.tsx',
-            },
-          ],
-          dashboardWidgets: [
-            {
-              id: 'seo-score',
-              title: 'SEO Score',
-              component: 'widgets/seo-score.tsx',
-              size: 'small',
-            },
-          ],
-        },
-        installedBy: adminUser._id.toString(),
-        lastActivated: new Date(),
-      },
-    ])
 
     console.log('✅ Database seeded successfully!')
     console.log('📊 Seeded data summary:')
     console.log(`  - Users: ${await UserModel.countDocuments()}`)
     console.log(`  - Themes: ${await InstalledThemeModel.countDocuments()}`)
-    console.log(`  - Plugins: ${await InstalledPluginModel.countDocuments()}`)
+    //console.log(`  - Plugins: ${await InstalledPluginModel.countDocuments()}`)
     console.log(`  - Settings: ${await SystemSettingsModel.countDocuments()}`)
     console.log('')
     console.log('🔑 Login credentials:')
