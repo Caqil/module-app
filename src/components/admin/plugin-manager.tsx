@@ -590,7 +590,12 @@ const PluginManager: React.FC<PluginManagerProps> = ({ className }) => {
                 )}
 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>By {plugin.manifest.author.name}</span>
+                  <span>
+                    By{" "}
+                    {typeof plugin.manifest.author === "string"
+                      ? plugin.manifest.author
+                      : plugin.manifest.author?.name || "Unknown"}
+                  </span>
                   <span>
                     {plugin.routes.length} routes, {plugin.hooks.length} hooks
                   </span>

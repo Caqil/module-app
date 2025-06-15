@@ -1,0 +1,68 @@
+{
+  "id": "hello-world",
+  "name": "Hello World Plugin",
+  "version": "1.0.0",
+  "description": "A React-compatible plugin that works with your existing loader",
+  "author": {
+    "name": "Plugin Developer",
+    "email": "dev@example.com",
+    "url": "https://example.com"
+  },
+  "license": "MIT",
+  "category": "utility",
+  "keywords": [
+    "test",
+    "react",
+    "hello"
+  ],
+  "tags": [
+    "demo",
+    "react"
+  ],
+  "requirements": {
+    "nextjs": ">=15.0.0"
+  },
+  "permissions": [
+    "admin:access",
+    "api:create"
+  ],
+  "entry": {
+    "main": "index.js",
+    "admin": "components/admin.js",
+    "api": "routes/api.js"
+  },
+  "routes": [
+    {
+      "path": "/hello",
+      "method": "GET",
+      "handler": "api.js",
+      "permissions": [
+        "api:create"
+      ]
+    }
+  ],
+  "adminPages": [
+    {
+      "path": "/hello-world",
+      "title": "Hello World",
+      "icon": "Heart",
+      "component": "admin.js",
+      "permissions": [
+        "admin:access"
+      ],
+      "order": 1
+    }
+  ],
+  "dashboardWidgets": [
+    {
+      "id": "hello-widget",
+      "title": "Hello Widget",
+      "component": "widget.js",
+      "size": "small",
+      "permissions": [
+        "admin:access"
+      ],
+      "configurable": false
+    }
+  ]
+}

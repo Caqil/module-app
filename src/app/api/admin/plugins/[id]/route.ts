@@ -1,300 +1,126 @@
-// Fixed Admin Plugin by ID API Routes
-// src/app/api/admin/plugins/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { ApiResponse } from '@/types/global'
-import { connectToDatabase } from '@/lib/database/mongodb'
+import { getServerSession } from 'next-auth/next'
 import { InstalledPluginModel } from '@/lib/database/models/plugin'
-import { pluginManager } from '@/lib/plugins/manager'
-import { pluginRegistry } from '@/lib/plugins/registry'
-import { reloadPlugin } from '@/lib/plugins/init'
-import { getErrorMessage } from '@/lib/utils'
+import { connectToDatabase } from '@/lib/database/mongodb'
 
-/**
- * GET /api/admin/plugins/[id] - Get specific plugin details
- */
+// GET - Get plugin details
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Check authentication and admin permissions
-    const session = await auth.getSession(request)
-    if (!session || !auth.hasRole(session, 'admin')) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Admin access required'
-      }, { status: 403 })
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Authentication required' 
+      }, { status: 401 })
     }
 
+    const pluginId = params.id
     await connectToDatabase()
 
-    const { id: pluginId } = params
-
-    // Get plugin from database
-    const plugin = await InstalledPluginModel.findByPluginId(pluginId)
+    const plugin = await InstalledPluginModel.findOne({ pluginId })
     if (!plugin) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Plugin not found'
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Plugin not found' 
       }, { status: 404 })
     }
 
-    // Get runtime information with safe property access
-    const loadedPlugin = pluginRegistry.getPlugin(pluginId)
-    const runtimeInfo = {
-      isLoaded: !!loadedPlugin,
-      hasErrors: (plugin.errorLog?.length || 0) > 0,  // FIXED: Safe access
-      lastError: plugin.errorLog && plugin.errorLog.length > 0 
-        ? plugin.errorLog[plugin.errorLog.length - 1] 
-        : null,  // FIXED: Safe access
-      routeCount: plugin.routes?.length || 0,  // FIXED: Safe access
-      hookCount: plugin.hooks?.length || 0,    // FIXED: Safe access
-      loadedAt: loadedPlugin?.loadedAt || null,
-      dependencies: plugin.dependencies || [],  // FIXED: Safe access
-      adminPages: plugin.adminPages || [],      // FIXED: Safe access
-      dashboardWidgets: plugin.dashboardWidgets || [],  // FIXED: Safe access
-      // Additional safe properties
-      adminPageCount: plugin.adminPages?.length || 0,
-      dashboardWidgetCount: plugin.dashboardWidgets?.length || 0,
-      dependencyCount: plugin.dependencies?.length || 0,
-      errorCount: plugin.errorLog?.length || 0
-    }
-
-    // Include configuration schema if available
-    const configSchema = plugin.manifest?.settings?.schema || null
-    const configDefaults = plugin.manifest?.settings?.defaults || {}
-
-    // Safe plugin object creation
-    const pluginData = {
-      ...plugin.toObject(),
-      runtimeInfo,
-      configSchema,
-      configDefaults
-    }
-
-    return NextResponse.json<ApiResponse>({
+    return NextResponse.json({
       success: true,
-      data: {
-        plugin: pluginData
+      plugin: {
+        id: plugin.pluginId,
+        name: plugin.name,
+        version: plugin.version,
+        description: plugin.manifest.description,
+        author: plugin.manifest.author,
+        category: plugin.manifest.category,
+        isActive: plugin.isActive,
+        status: plugin.status,
+        manifest: plugin.manifest,
+        config: plugin.config,
+        errorLog: plugin.errorLog.slice(-10),
+        runtimeInfo: {
+          isLoaded: true,
+          hasErrors: plugin.errorLog.some(log => log.level === 'error'),
+          routeCount: plugin.routes?.length || 0,
+          hookCount: plugin.hooks?.length || 0,
+          loadedAt: plugin.activatedAt,
+          adminPageCount: plugin.manifest.adminPages?.length || 0,
+          dashboardWidgetCount: plugin.manifest.dashboardWidgets?.length || 0,
+          dependencyCount: Object.keys(plugin.manifest.dependencies?.plugins || {}).length,
+          errorCount: plugin.errorLog.filter(log => log.level === 'error').length
+        }
       }
     })
 
   } catch (error) {
-    console.error('Get plugin details error:', error)
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: 'Failed to fetch plugin details',
+    console.error('Error fetching plugin details:', error)
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to fetch plugin details' 
     }, { status: 500 })
   }
 }
 
-/**
- * PUT /api/admin/plugins/[id] - Update plugin configuration or perform actions
- */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    // Check authentication and admin permissions
-    const session = await auth.getSession(request)
-    if (!session || !auth.hasRole(session, 'admin')) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Admin access required'
-      }, { status: 403 })
-    }
-
-    await connectToDatabase()
-
-    const { id: pluginId } = params
-    const body = await request.json()
-    const { action, config, options } = body
-
-    // Get plugin from database
-    const plugin = await InstalledPluginModel.findByPluginId(pluginId)
-    if (!plugin) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Plugin not found'
-      }, { status: 404 })
-    }
-
-    switch (action) {
-      case 'activate':
-        const activateResult = await pluginManager.activatePlugin(pluginId)
-        if (activateResult.success) {
-          const updatedPlugin = await InstalledPluginModel.findByPluginId(pluginId)
-          return NextResponse.json<ApiResponse>({
-            success: true,
-            data: { plugin: updatedPlugin },
-            message: 'Plugin activated successfully'
-          })
-        } else {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: activateResult.error
-          }, { status: 400 })
-        }
-
-      case 'deactivate':
-        const deactivateResult = await pluginManager.deactivatePlugin(pluginId)
-        if (deactivateResult.success) {
-          const updatedPlugin = await InstalledPluginModel.findByPluginId(pluginId)
-          return NextResponse.json<ApiResponse>({
-            success: true,
-            data: { plugin: updatedPlugin },
-            message: 'Plugin deactivated successfully'
-          })
-        } else {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: deactivateResult.error
-          }, { status: 400 })
-        }
-
-      case 'reload':
-        try {
-          await reloadPlugin(pluginId)
-          const updatedPlugin = await InstalledPluginModel.findByPluginId(pluginId)
-          return NextResponse.json<ApiResponse>({
-            success: true,
-            data: { plugin: updatedPlugin },
-            message: 'Plugin reloaded successfully'
-          })
-        } catch (reloadError) {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: getErrorMessage(reloadError)
-          }, { status: 400 })
-        }
-
-      case 'backup':
-        const backupResult = await pluginManager.backupPlugin(pluginId, 'manual')
-        if (backupResult.success) {
-          return NextResponse.json<ApiResponse>({
-            success: true,
-            data: { backup: backupResult.backupId },
-            message: 'Plugin backup created successfully'
-          })
-        } else {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: backupResult.error
-          }, { status: 400 })
-        }
-
-      case 'configure':
-        if (!config) {
-          return NextResponse.json<ApiResponse>({
-            success: false,
-            error: 'Configuration data is required'
-          }, { status: 400 })
-        }
-
-        // Update plugin settings
-        const settings = { ...plugin.config, ...config }
-        const updatedPlugin = await InstalledPluginModel.findOneAndUpdate(
-          { pluginId },
-          { settings },
-          { new: true }
-        )
-
-        return NextResponse.json<ApiResponse>({
-          success: true,
-          data: { plugin: updatedPlugin },
-          message: 'Plugin settings updated successfully'
-        })
-
-      default:
-        return NextResponse.json<ApiResponse>({
-          success: false,
-          error: 'Invalid action'
-        }, { status: 400 })
-    }
-
-  } catch (error) {
-    console.error('Update plugin error:', error)
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: getErrorMessage(error),
-    }, { status: 500 })
-  }
-}
-
-/**
- * DELETE /api/admin/plugins/[id] - Uninstall plugin
- */
+// DELETE - Uninstall plugin
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Check authentication and admin permissions
-    const session = await auth.getSession(request)
-    if (!session || !auth.hasRole(session, 'admin')) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Admin access required'
-      }, { status: 403 })
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Authentication required' 
+      }, { status: 401 })
     }
 
+    const pluginId = params.id
     await connectToDatabase()
 
-    const { id: pluginId } = params
-
-    // Parse query parameters for options
-    const url = new URL(request.url)
-    const force = url.searchParams.get('force') === 'true'
-    const backup = url.searchParams.get('backup') !== 'false' // Default to true
-
-    // Get plugin info before deletion
-    const plugin = await InstalledPluginModel.findByPluginId(pluginId)
+    const plugin = await InstalledPluginModel.findOne({ pluginId })
     if (!plugin) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Plugin not found'
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Plugin not found' 
       }, { status: 404 })
     }
 
-    // Check if plugin is active and not forcing
-    if (plugin.isActive && !force) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: 'Cannot delete active plugin. Deactivate first or use force=true'
+    if (plugin.isActive) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Cannot delete active plugin. Deactivate it first.' 
       }, { status: 400 })
     }
 
-    // Create backup if requested
-    if (backup) {
-      const backupResult = await pluginManager.backupPlugin(pluginId, 'auto')
-      if (!backupResult.success) {
-        console.warn(`Failed to backup plugin ${pluginId} before deletion:`, backupResult.error)
+    // Delete plugin files
+    if (plugin.installPath) {
+      try {
+        const fs = require('fs/promises')
+        await fs.rm(plugin.installPath, { recursive: true, force: true })
+      } catch (error) {
+        console.warn('Failed to delete plugin files:', error)
       }
     }
 
-    // Uninstall plugin
-    const result = await pluginManager.uninstallPlugin(pluginId, session.user.id)
-    
-    if (result.success) {
-      return NextResponse.json<ApiResponse>({
-        success: true,
-        message: 'Plugin uninstalled successfully'
-      })
-    } else {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: result.error
-      }, { status: 500 })
-    }
+    // Delete from database
+    await plugin.deleteOne()
+
+    return NextResponse.json({
+      success: true,
+      message: `Plugin '${plugin.name}' deleted successfully`
+    })
 
   } catch (error) {
-    console.error('Delete plugin error:', error)
-    return NextResponse.json<ApiResponse>({
-      success: false,
-      error: getErrorMessage(error),
+    console.error('Plugin deletion error:', error)
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to delete plugin' 
     }, { status: 500 })
   }
 }
