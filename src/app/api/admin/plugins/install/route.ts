@@ -2,10 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { ApiResponse, FileUpload } from '@/types/global';
-import { pluginManager } from '@/lib/plugins/manager';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { generateId } from '@/lib/utils';
+import { pluginManager } from '@/lib/plugins/manager';
 
 export async function POST(request: NextRequest) {
   try {

@@ -20,7 +20,6 @@
 # production
 /build
 /public/
-/plugins/
 /themes/
 # misc
 .DS_Store
