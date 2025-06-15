@@ -80,7 +80,8 @@ export class PluginManager extends EventEmitter implements PluginManagerInterfac
         return { success: false, error: 'Invalid file provided' }
       }
 
-      if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(getFileExtension(file.name))) {
+      const fileExtension = getFileExtension(file.filename)
+      if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
         return { success: false, error: 'Only ZIP files are allowed' }
       }
 
@@ -93,7 +94,10 @@ export class PluginManager extends EventEmitter implements PluginManagerInterfac
       const uploadPath = path.join(this.uploadDir, `${uploadId}.zip`)
 
       // Save uploaded file
-      await fs.writeFile(uploadPath, new Uint8Array(await file.arrayBuffer()))
+      if (!file.buffer) {
+        return { success: false, error: 'File buffer not found' }
+      }
+      await fs.writeFile(uploadPath, file.buffer)
 
       // Extract and validate plugin
       const extractPath = path.join(this.uploadDir, uploadId)
@@ -305,17 +309,20 @@ export class PluginManager extends EventEmitter implements PluginManagerInterfac
       if (plugin.isActive) {
         return { success: false, error: 'Plugin is already active' }
       }
-
+ const pluginData = {
+          ...plugin.toObject(),
+          _id: plugin._id.toString()
+        }
       // Check dependencies unless skipped
       if (!options.skipDependencyCheck) {
-        const dependencyCheck = await this.checkDependencies(plugin)
+        const dependencyCheck = await this.checkDependencies(pluginData)
         if (!dependencyCheck.success) {
           return { success: false, error: dependencyCheck.error }
         }
       }
 
       // Load plugin
-      const loadedPlugin = await pluginLoader.loadPlugin(plugin)
+      const loadedPlugin = await pluginLoader.loadPlugin(pluginData)
       if (loadedPlugin.error) {
         return { success: false, error: `Failed to load plugin: ${loadedPlugin.error.message}` }
       }
@@ -458,96 +465,120 @@ export class PluginManager extends EventEmitter implements PluginManagerInterfac
       return null
     }
   }
-
-  /**
-   * Get a specific plugin
-   */
-  async getPlugin(pluginId: string): Promise<InstalledPlugin | null> {
-    try {
-      return await InstalledPluginModel.findByPluginId(pluginId)
-    } catch (error) {
-      console.error('Get plugin error:', error)
-      return null
+/**
+ * Get a specific plugin
+ */
+async getPlugin(pluginId: string): Promise<InstalledPlugin | null> {
+  try {
+    const plugin = await InstalledPluginModel.findByPluginId(pluginId)
+    if (!plugin) return null
+    
+    // Convert MongoDB document to InstalledPlugin interface
+    return {
+      ...plugin.toObject(),
+      _id: plugin._id.toString()
     }
+  } catch (error) {
+    console.error('Get plugin error:', error)
+    return null
   }
+}
 
-  /**
-   * Get all active plugins
-   */
-  async getActivePlugins(): Promise<InstalledPlugin[]> {
-    try {
-      return await InstalledPluginModel.findActivePlugins()
-    } catch (error) {
-      console.error('Get active plugins error:', error)
-      return []
-    }
+/**
+ * Get all active plugins
+ */
+async getActivePlugins(): Promise<InstalledPlugin[]> {
+  try {
+    const plugins = await InstalledPluginModel.findActivePlugins()
+    
+    // Convert MongoDB documents to InstalledPlugin interfaces
+    return plugins.map(plugin => ({
+      ...plugin.toObject(),
+      _id: plugin._id.toString()
+    }))
+  } catch (error) {
+    console.error('Get active plugins error:', error)
+    return []
   }
+}
 
-  /**
-   * Get all plugins
-   */
-  async getAllPlugins(): Promise<InstalledPlugin[]> {
-    try {
-      return await InstalledPluginModel.find().sort({ createdAt: -1 })
-    } catch (error) {
-      console.error('Get all plugins error:', error)
-      return []
-    }
+/**
+ * Get all plugins
+ */
+async getAllPlugins(): Promise<InstalledPlugin[]> {
+  try {
+    const plugins = await InstalledPluginModel.find().sort({ createdAt: -1 })
+    
+    // Convert MongoDB documents to InstalledPlugin interfaces
+    return plugins.map(plugin => ({
+      ...plugin.toObject(),
+      _id: plugin._id.toString()
+    }))
+  } catch (error) {
+    console.error('Get all plugins error:', error)
+    return []
   }
+}
 
   /**
    * Validate plugin file
    */
   async validatePlugin(file: FileUpload): Promise<PluginValidationResult> {
-    try {
-      // Basic file validation
-      if (!file || !file.filename || !file.size) {
-        return { isValid: false, errors: ['Invalid file provided'], warnings: [] }
-      }
-
-      if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(getFileExtension(file.name))) {
-        return { isValid: false, errors: ['Only ZIP files are allowed'], warnings: [] }
-      }
-
-      if (file.size > PLUGIN_CONFIG.MAX_FILE_SIZE) {
-        return { isValid: false, errors: ['File size exceeds maximum limit'], warnings: [] }
-      }
-
-      // Extract and validate manifest
-      const tempPath = path.join(this.uploadDir, `temp_${generateId()}`)
-      await fs.writeFile(`${tempPath}.zip`, new Uint8Array(await file.arrayBuffer()))
-
-      const zip = new AdmZip(`${tempPath}.zip`)
-      zip.extractAllTo(tempPath, true)
-
-      const manifestPath = await this.findManifestFile(tempPath)
-      if (!manifestPath) {
-        await this.cleanup([`${tempPath}.zip`, tempPath])
-        return { isValid: false, errors: ['Plugin manifest not found'], warnings: [] }
-      }
-
-      const manifestContent = await fs.readFile(manifestPath, 'utf-8')
-      let manifest: PluginManifest
-
-      try {
-        manifest = JSON.parse(manifestContent)
-      } catch (error) {
-        await this.cleanup([`${tempPath}.zip`, tempPath])
-        return { isValid: false, errors: ['Invalid manifest JSON format'], warnings: [] }
-      }
-
-      const validation = await this.validateManifest(manifest)
-
-      // Cleanup temp files
-      await this.cleanup([`${tempPath}.zip`, tempPath])
-
-      return validation
-
-    } catch (error) {
-      console.error('Plugin validation error:', error)
-      return { isValid: false, errors: [getErrorMessage(error)], warnings: [] }
+  try {
+    // Basic file validation
+    if (!file || !file.filename || !file.size) {
+      return { isValid: false, errors: ['Invalid file provided'], warnings: [] }
     }
+
+    const fileExtension = getFileExtension(file.filename)
+    if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
+      return { isValid: false, errors: ['Only ZIP files are allowed'], warnings: [] }
+    }
+
+    if (file.size > PLUGIN_CONFIG.MAX_FILE_SIZE) {
+      return { isValid: false, errors: ['File size exceeds maximum limit'], warnings: [] }
+    }
+
+    // Extract and validate manifest
+    const tempPath = path.join(this.uploadDir, `temp_${generateId()}`)
+    
+    if (!file.buffer) {
+      return { isValid: false, errors: ['File buffer not found'], warnings: [] }
+    }
+    
+    await fs.writeFile(`${tempPath}.zip`, file.buffer)
+
+    const zip = new AdmZip(`${tempPath}.zip`)
+    zip.extractAllTo(tempPath, true)
+
+    const manifestPath = await this.findManifestFile(tempPath)
+    if (!manifestPath) {
+      await this.cleanup([`${tempPath}.zip`, tempPath])
+      return { isValid: false, errors: ['Plugin manifest not found'], warnings: [] }
+    }
+
+    const manifestContent = await fs.readFile(manifestPath, 'utf-8')
+    let manifest: PluginManifest
+
+    try {
+      manifest = JSON.parse(manifestContent)
+    } catch (error) {
+      await this.cleanup([`${tempPath}.zip`, tempPath])
+      return { isValid: false, errors: ['Invalid manifest JSON format'], warnings: [] }
+    }
+
+    const validation = await this.validateManifest(manifest)
+
+    // Cleanup temp files
+    await this.cleanup([`${tempPath}.zip`, tempPath])
+
+    return validation
+
+  } catch (error) {
+    console.error('Plugin validation error:', error)
+    return { isValid: false, errors: [getErrorMessage(error)], warnings: [] }
   }
+}
 
   /**
    * Validate plugin manifest
@@ -682,8 +713,12 @@ export class PluginManager extends EventEmitter implements PluginManagerInterfac
     try {
       const activePlugins = await InstalledPluginModel.findActivePlugins()
       for (const plugin of activePlugins) {
-        try {
-          const loadedPlugin = await pluginLoader.loadPlugin(plugin)
+        try { 
+            const pluginData = {
+          ...plugin.toObject(),
+          _id: plugin._id.toString()
+        }
+          const loadedPlugin = await pluginLoader.loadPlugin(pluginData)
           if (!loadedPlugin.error) {
             pluginRegistry.registerPlugin(loadedPlugin)
           }

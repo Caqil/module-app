@@ -9,6 +9,7 @@ import { pluginHooks, PLUGIN_HOOKS } from '@/lib/plugins/hooks'
 import { PluginAPIContext } from '@/types/plugin'
 import { connectToDatabase } from '@/lib/database/mongodb'
 import { getErrorMessage } from '@/lib/utils'
+import { AuthSession } from '@/types/auth'
 
 // Rate limiting map (in production, use Redis or similar)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
@@ -16,6 +17,7 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
 /**
  * Handle dynamic plugin routes
  */
+
 async function handlePluginRoute(
   request: NextRequest,
   { params }: { params: { path: string[] } }
@@ -64,7 +66,7 @@ async function handlePluginRoute(
     }
 
     // Check authentication if required
-    let session = null
+    let session: AuthSession | null = null
     if (routeConfig.permissions && routeConfig.permissions.length > 0) {
       session = await auth.getSession(request)
       if (!session) {
@@ -76,7 +78,7 @@ async function handlePluginRoute(
 
       // Check permissions
       const hasPermission = routeConfig.permissions.some(permission => 
-        auth.hasPermission(session, permission)
+        hasUserPermission(session!.user, permission)
       )
 
       if (!hasPermission) {
@@ -89,7 +91,7 @@ async function handlePluginRoute(
 
     // Apply rate limiting if configured
     if (routeConfig.rateLimit) {
-      const clientId = session?.userId || request.ip || 'anonymous'
+      const clientId = session?.user?.id || getClientIp(request) || 'anonymous'
       const rateLimitKey = `${plugin.manifest.id}:${path}:${clientId}`
       
       const isRateLimited = await applyRateLimit(
@@ -216,6 +218,26 @@ async function handlePluginRoute(
   }
 }
 
+// Helper function to check user permissions
+function hasUserPermission(user: any, permission: string): boolean {
+  // Implement your permission checking logic here
+  // This could check user roles, specific permissions, etc.
+  if (user.role === 'admin') return true
+  return user.permissions?.includes(permission) || false
+}
+
+// Helper function to get client IP
+function getClientIp(request: NextRequest): string | null {
+  const forwarded = request.headers.get('x-forwarded-for')
+  const realIp = request.headers.get('x-real-ip')
+  const cfConnectingIp = request.headers.get('cf-connecting-ip')
+  
+  if (forwarded) {
+    return forwarded.split(',')[0].trim()
+  }
+  
+  return realIp || cfConnectingIp || null
+}
 /**
  * Create plugin API context
  */
@@ -328,7 +350,8 @@ async function validateRequest(
     // Basic validation (in production, use a proper schema validator like Zod)
     if (validation.query) {
       for (const [field, rules] of Object.entries(validation.query as any)) {
-        if (rules.required && !query[field]) {
+        const validationRules = rules as any
+        if (validationRules.required && !query[field]) {
           errors.push(`Query parameter '${field}' is required`)
         }
       }
@@ -336,7 +359,8 @@ async function validateRequest(
 
     if (validation.body) {
       for (const [field, rules] of Object.entries(validation.body as any)) {
-        if (rules.required && !body[field]) {
+        const validationRules = rules as any
+        if (validationRules.required && !body[field]) {
           errors.push(`Body field '${field}' is required`)
         }
       }

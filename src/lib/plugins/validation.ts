@@ -217,18 +217,18 @@ export function validatePluginManifest(manifest: any): PluginValidationResult {
     const validated = pluginManifestSchema.parse(manifest)
     
     // Additional business logic validation
-    const additionalValidation = performAdditionalValidation(validated)
+    const additionalValidation = performAdditionalValidation(validated as any)
     errors.push(...additionalValidation.errors)
     warnings.push(...additionalValidation.warnings)
     
     // Security assessment
-    const security = assessPluginSecurity(validated)
+    const security = assessPluginSecurity(validated as any)
     
     return {
       isValid: errors.length === 0,
       errors,
       warnings,
-      manifest: validated,
+      manifest: validated as any, // Let caller handle type conversion
       security
     }
   } catch (error) {

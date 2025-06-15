@@ -75,52 +75,63 @@ class PluginLoader implements PluginLoaderInterface {
   /**
    * Reload a plugin
    */
-  async reloadPlugin(pluginId: string): Promise<LoadedPlugin> {
-    try {
-      // Unload first
-      await this.unloadPlugin(pluginId)
-
-      // Get plugin from database and reload
-      const { InstalledPluginModel } = await import('@/lib/database/models/plugin')
-      const plugin = await InstalledPluginModel.findByPluginId(pluginId)
-      
-      if (!plugin) {
-        throw new Error(`Plugin ${pluginId} not found`)
-      }
-
-      return await this.loadPlugin(plugin)
-    } catch (error) {
-      console.error(`Failed to reload plugin ${pluginId}:`, error)
-      throw error
+ async reloadPlugin(pluginId: string): Promise<LoadedPlugin> {
+  try {
+    // Unload first
+    await this.unloadPlugin(pluginId)
+    
+    // Get plugin from database and reload
+    const { InstalledPluginModel } = await import('@/lib/database/models/plugin')
+    const plugin = await InstalledPluginModel.findByPluginId(pluginId)
+    
+    if (!plugin) {
+      throw new Error(`Plugin ${pluginId} not found`)
     }
+    
+    // Convert MongoDB document to plain object with string _id
+    const pluginData = {
+      ...plugin.toObject(),
+      _id: plugin._id.toString()
+    }
+    
+    return await this.loadPlugin(pluginData)
+  } catch (error) {
+    console.error(`Failed to reload plugin ${pluginId}:`, error)
+    throw error
   }
+}
 
   /**
    * Load all active plugins
    */
   async loadAllActivePlugins(): Promise<LoadedPlugin[]> {
-    try {
-      const { InstalledPluginModel } = await import('@/lib/database/models/plugin')
-      const activePlugins = await InstalledPluginModel.findActivePlugins()
+  try {
+    const { InstalledPluginModel } = await import('@/lib/database/models/plugin')
+    const activePlugins = await InstalledPluginModel.findActivePlugins()
 
-      const loadedPlugins: LoadedPlugin[] = []
-      for (const plugin of activePlugins) {
-        try {
-          const loadedPlugin = await this.loadPlugin(plugin)
-          loadedPlugins.push(loadedPlugin)
-        } catch (error) {
-          console.error(`Failed to load plugin ${plugin.pluginId}:`, error)
-          // Continue loading other plugins
+    const loadedPlugins: LoadedPlugin[] = []
+    for (const plugin of activePlugins) {
+      try {
+        // Convert MongoDB document to plain object with string _id
+        const pluginData = {
+          ...plugin.toObject(),
+          _id: plugin._id.toString()
         }
+        
+        const loadedPlugin = await this.loadPlugin(pluginData)
+        loadedPlugins.push(loadedPlugin)
+      } catch (error) {
+        console.error(`Failed to load plugin ${plugin.pluginId}:`, error)
+        // Continue loading other plugins
       }
-
-      return loadedPlugins
-    } catch (error) {
-      console.error('Failed to load active plugins:', error)
-      return []
     }
-  }
 
+    return loadedPlugins
+  } catch (error) {
+    console.error('Failed to load active plugins:', error)
+    return []
+  }
+}
   /**
    * Validate plugin structure
    */

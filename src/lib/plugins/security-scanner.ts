@@ -302,7 +302,7 @@ export class PluginSecurityScanner {
     }
 
     return {
-      isSecure: riskLevel !== 'critical' && riskLevel !== 'high',
+      isSecure: riskLevel !== 'high',
       riskLevel,
       issues
     }

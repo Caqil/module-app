@@ -63,14 +63,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Check file extension
-    const fileExtension = getFileExtension(file.name)
-    if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension)) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: `Invalid file type. Only ${PLUGIN_CONFIG.ALLOWED_EXTENSIONS.join(', ')} files are allowed`
-      }, { status: 400 })
-    }
-
+   const fileExtension = getFileExtension(file.name)
+if (!PLUGIN_CONFIG.ALLOWED_EXTENSIONS.includes(fileExtension as any)) {
+  return NextResponse.json<ApiResponse>({
+    success: false,
+    error: `Invalid file type. Only ${PLUGIN_CONFIG.ALLOWED_EXTENSIONS.join(', ')} files are allowed`
+  }, { status: 400 })
+}
     // Check file size
     if (file.size > PLUGIN_CONFIG.MAX_FILE_SIZE) {
       const maxSizeMB = PLUGIN_CONFIG.MAX_FILE_SIZE / (1024 * 1024)
